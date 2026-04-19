@@ -1,0 +1,932 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>YellowPages Country Scraper Dashboard</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0f172a;
+        --panel: #111827;
+        --panel-border: #1f2937;
+        --text: #e5e7eb;
+        --muted: #94a3b8;
+        --accent: #38bdf8;
+        --good: #34d399;
+        --warn: #fbbf24;
+        --bad: #f87171;
+      }
+
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: var(--bg);
+        color: var(--text);
+      }
+
+      a { color: var(--accent); }
+      .layout {
+        display: grid;
+        grid-template-columns: 420px 1fr;
+        min-height: 100vh;
+      }
+
+      .sidebar, .main {
+        padding: 20px;
+      }
+
+      .sidebar {
+        border-right: 1px solid var(--panel-border);
+        background: #0b1220;
+      }
+
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--panel-border);
+        border-radius: 14px;
+        padding: 16px;
+        margin-bottom: 16px;
+      }
+
+      h1, h2, h3 {
+        margin: 0 0 12px;
+      }
+
+      .subtle {
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      form {
+        display: grid;
+        gap: 10px;
+      }
+
+      input, select, button, textarea {
+        width: 100%;
+        border-radius: 10px;
+        border: 1px solid #334155;
+        background: #0f172a;
+        color: var(--text);
+        padding: 10px 12px;
+        font: inherit;
+      }
+
+      button {
+        cursor: pointer;
+        background: #0284c7;
+        border-color: #0284c7;
+        font-weight: 600;
+      }
+
+      button.secondary {
+        background: transparent;
+        border-color: #475569;
+      }
+
+      .job-list {
+        display: grid;
+        gap: 10px;
+      }
+
+      .job-card {
+        padding: 12px;
+        border-radius: 12px;
+        border: 1px solid #1f2937;
+        background: #0f172a;
+        cursor: pointer;
+      }
+
+      .job-card.active {
+        border-color: var(--accent);
+        box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.25);
+      }
+
+      .job-meta,
+      .header-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        align-items: center;
+        margin-bottom: 6px;
+      }
+
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        border-radius: 999px;
+        padding: 2px 10px;
+        font-size: 12px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+      }
+
+      .badge.running { color: #0f172a; background: var(--accent); }
+      .badge.completed { color: #052e16; background: var(--good); }
+      .badge.partial, .badge.retry { color: #422006; background: var(--warn); }
+      .badge.failed, .badge.canceled { color: #450a0a; background: var(--bad); }
+      .badge.paused { color: #2e1065; background: #c4b5fd; }
+      .badge.pending { color: #111827; background: #cbd5e1; }
+
+      .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+        gap: 12px;
+        margin-bottom: 16px;
+      }
+
+      .stat {
+        border: 1px solid var(--panel-border);
+        border-radius: 12px;
+        padding: 12px;
+        background: #0b1220;
+      }
+
+      .stat .label {
+        color: var(--muted);
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+      }
+
+      .stat .value {
+        margin-top: 8px;
+        font-size: 24px;
+        font-weight: 700;
+      }
+
+      .table-wrap {
+        overflow: auto;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 14px;
+      }
+
+      th, td {
+        text-align: left;
+        padding: 10px 8px;
+        border-bottom: 1px solid #1f2937;
+        vertical-align: top;
+      }
+
+      th {
+        color: var(--muted);
+        font-weight: 600;
+      }
+
+      .toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-bottom: 12px;
+      }
+
+      .toolbar > * {
+        width: auto;
+      }
+
+      .stack {
+        display: grid;
+        gap: 10px;
+      }
+
+      .inline-option {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      .inline-option input[type="checkbox"] {
+        width: auto;
+      }
+
+      .message {
+        margin-top: 10px;
+        font-size: 14px;
+        color: var(--muted);
+      }
+
+      .error {
+        color: var(--bad);
+      }
+
+      .empty {
+        color: var(--muted);
+        padding: 20px 0;
+      }
+
+      code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 12px;
+      }
+
+      @media (max-width: 1100px) {
+        .layout {
+          grid-template-columns: 1fr;
+        }
+
+        .sidebar {
+          border-right: 0;
+          border-bottom: 1px solid var(--panel-border);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="layout">
+      <aside class="sidebar">
+        <div class="panel">
+          <div class="header-row">
+            <div>
+              <h1>YellowPages scraper</h1>
+              <p class="subtle">Create country-scale Yelp jobs, track shard progress, and inspect lead growth without raw CLI work.</p>
+            </div>
+            <div>
+              <div id="auth-username" class="subtle"></div>
+              <button id="logout-button" type="button" class="secondary">Logout</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h2>Create job</h2>
+          <form id="create-job-form">
+            <input id="country" name="country" placeholder="Country, e.g. United States" required>
+            <input id="keyword" name="keyword" placeholder="Keyword, e.g. hotels or restaurants" required>
+            <div class="subtle">For broader hospitality coverage, run separate jobs for terms such as <code>hotel</code>, <code>hostel</code>, <code>resort</code>, and <code>inn</code>.</div>
+            <button type="submit">Start scrape job</button>
+          </form>
+          <div id="create-job-message" class="message"></div>
+        </div>
+
+        <div class="panel">
+          <h2>NocoDB integration</h2>
+          <form id="nocodb-form" class="stack">
+            <input id="nocodb-base-url" name="baseUrl" placeholder="NocoDB base URL, e.g. https://nocodb.example.com">
+            <input id="nocodb-api-token" name="apiToken" type="password" placeholder="API token (leave blank to keep saved token)">
+            <input id="nocodb-base-id" name="baseId" placeholder="Base ID">
+            <input id="nocodb-table-id" name="tableId" placeholder="Table ID for synced leads">
+            <input id="nocodb-auto-sync-interval" name="autoSyncIntervalMinutes" type="number" min="0" step="1" placeholder="Auto-sync interval while jobs run (minutes, recommended 30; 0 disables)">
+            <label class="inline-option"><input id="nocodb-auto-sync" type="checkbox"> Auto-sync completed jobs</label>
+            <label class="inline-option"><input id="nocodb-auto-create-columns" type="checkbox"> Auto-create missing NocoDB columns</label>
+            <div class="subtle">The sync stores query/source fields plus normalized lead fields and <code>raw_json</code>. Website, phone, address, city, area, state/postcode, primary category, subcategory, all subcategories, and reviews are synced by default. For long-running country jobs, a 30-minute interval is the recommended rolling output setting.</div>
+            <div class="toolbar">
+              <button type="submit">Save NocoDB settings</button>
+              <button id="nocodb-test-button" class="secondary" type="button">Test connection</button>
+            </div>
+          </form>
+          <div id="nocodb-message" class="message"></div>
+        </div>
+
+        <div class="panel">
+          <div class="job-meta">
+            <h2>Jobs</h2>
+            <button id="refresh-jobs" class="secondary" type="button">Refresh</button>
+          </div>
+          <div id="job-list" class="job-list"></div>
+        </div>
+      </aside>
+
+      <main class="main">
+        <div id="selected-job-empty" class="panel">
+          <h2>No job selected</h2>
+          <p class="subtle">Pick a job from the list to inspect shard coverage, errors, and live lead output.</p>
+        </div>
+
+        <div id="selected-job-view" hidden>
+          <div class="panel">
+            <div class="job-meta">
+              <div>
+                <h2 id="job-title">Job</h2>
+                <div id="job-subtitle" class="subtle"></div>
+              </div>
+              <div id="job-status"></div>
+            </div>
+            <div class="toolbar">
+              <button id="pause-job-button" class="secondary" type="button">Pause job</button>
+              <button id="resume-job-button" class="secondary" type="button">Resume job</button>
+              <button id="cancel-job-button" class="secondary" type="button">Cancel job</button>
+              <button id="delete-job-button" class="secondary" type="button">Delete job</button>
+              <button id="sync-nocodb-button" class="secondary" type="button">Sync to NocoDB</button>
+            </div>
+            <div id="job-links" class="subtle"></div>
+            <div id="job-sync-status" class="subtle"></div>
+          </div>
+
+          <div id="stats-grid" class="stats-grid"></div>
+
+          <div class="panel">
+            <div class="job-meta">
+              <h3>Shard states</h3>
+              <div class="toolbar">
+                <select id="shard-status-filter">
+                  <option value="">all statuses</option>
+                  <option value="pending">pending</option>
+                  <option value="retry">retry</option>
+                  <option value="running">running</option>
+                  <option value="done">done</option>
+                  <option value="failed">failed</option>
+                  <option value="split">split</option>
+                  <option value="skipped">skipped</option>
+                  <option value="canceled">canceled</option>
+                </select>
+                <button id="refresh-selected" class="secondary" type="button">Refresh selected</button>
+              </div>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Shard</th>
+                    <th>Status</th>
+                    <th>Depth</th>
+                    <th>Results</th>
+                    <th>Attempts</th>
+                    <th>Next run</th>
+                    <th>Updated</th>
+                    <th>BBox</th>
+                  </tr>
+                </thead>
+                <tbody id="shard-table-body"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="panel">
+            <h3>Recent shard errors</h3>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Shard</th>
+                    <th>Status</th>
+                    <th>Error</th>
+                    <th>Updated</th>
+                  </tr>
+                </thead>
+                <tbody id="error-table-body"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="panel">
+            <h3>Lead sample</h3>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Website</th>
+                    <th>Phone</th>
+                    <th>Primary category</th>
+                    <th>Subcategory</th>
+                    <th>Reviews</th>
+                    <th>All subcategories</th>
+                  </tr>
+                </thead>
+                <tbody id="lead-table-body"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+
+    <script>
+      const state = {
+        selectedJobId: new URLSearchParams(window.location.search).get("jobId"),
+        jobs: [],
+        refreshTimer: null,
+        nocodbConfig: null,
+        nocodbDirty: false,
+      };
+
+      const els = {
+        authUsername: document.getElementById("auth-username"),
+        logoutButton: document.getElementById("logout-button"),
+        createJobForm: document.getElementById("create-job-form"),
+        createJobMessage: document.getElementById("create-job-message"),
+        nocodbForm: document.getElementById("nocodb-form"),
+        nocodbBaseUrl: document.getElementById("nocodb-base-url"),
+        nocodbApiToken: document.getElementById("nocodb-api-token"),
+        nocodbBaseId: document.getElementById("nocodb-base-id"),
+        nocodbTableId: document.getElementById("nocodb-table-id"),
+        nocodbAutoSyncInterval: document.getElementById("nocodb-auto-sync-interval"),
+        nocodbAutoSync: document.getElementById("nocodb-auto-sync"),
+        nocodbAutoCreateColumns: document.getElementById("nocodb-auto-create-columns"),
+        nocodbTestButton: document.getElementById("nocodb-test-button"),
+        nocodbMessage: document.getElementById("nocodb-message"),
+        jobList: document.getElementById("job-list"),
+        refreshJobs: document.getElementById("refresh-jobs"),
+        selectedJobEmpty: document.getElementById("selected-job-empty"),
+        selectedJobView: document.getElementById("selected-job-view"),
+        jobTitle: document.getElementById("job-title"),
+        jobSubtitle: document.getElementById("job-subtitle"),
+        jobStatus: document.getElementById("job-status"),
+        jobLinks: document.getElementById("job-links"),
+        jobSyncStatus: document.getElementById("job-sync-status"),
+        pauseJobButton: document.getElementById("pause-job-button"),
+        resumeJobButton: document.getElementById("resume-job-button"),
+        cancelJobButton: document.getElementById("cancel-job-button"),
+        deleteJobButton: document.getElementById("delete-job-button"),
+        syncNocoDbButton: document.getElementById("sync-nocodb-button"),
+        statsGrid: document.getElementById("stats-grid"),
+        shardStatusFilter: document.getElementById("shard-status-filter"),
+        refreshSelected: document.getElementById("refresh-selected"),
+        shardTableBody: document.getElementById("shard-table-body"),
+        errorTableBody: document.getElementById("error-table-body"),
+        leadTableBody: document.getElementById("lead-table-body"),
+      };
+
+      function escapeHtml(value) {
+        return String(value ?? "")
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;");
+      }
+
+      function badge(status) {
+        return `<span class="badge ${escapeHtml(status)}">${escapeHtml(status)}</span>`;
+      }
+
+      function setMessage(element, message, isError = false) {
+        element.textContent = message;
+        element.classList.toggle("error", Boolean(isError));
+      }
+
+      function formatNumber(value) {
+        return value == null ? "-" : new Intl.NumberFormat().format(value);
+      }
+
+      function formatDate(value) {
+        if (!value) return "-";
+        const date = new Date(value);
+        return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+      }
+
+      async function requestJson(url, options) {
+        const response = await fetch(url, options);
+        const payload = await response.json().catch(() => ({}));
+
+        if (response.status === 401) {
+          const next = encodeURIComponent(window.location.pathname + window.location.search);
+          window.location.href = `/login?next=${next}`;
+          throw new Error("Authentication required.");
+        }
+
+        if (!response.ok) {
+          throw new Error(payload.error || `Request failed: ${response.status}`);
+        }
+
+        return payload;
+      }
+
+      async function loadSession() {
+        const payload = await requestJson("/api/auth/session");
+        els.authUsername.textContent = payload.username
+          ? `Signed in as ${payload.username}`
+          : "";
+      }
+
+      function renderJobs() {
+        if (!state.jobs.length) {
+          els.jobList.innerHTML = `<div class="empty">No jobs yet.</div>`;
+          return;
+        }
+
+        els.jobList.innerHTML = state.jobs.map((job) => `
+          <div class="job-card ${job.id === state.selectedJobId ? "active" : ""}" data-job-id="${escapeHtml(job.id)}">
+            <div class="job-meta">
+              <strong>${escapeHtml(job.country)}</strong>
+              ${badge(job.status)}
+            </div>
+            <div>${escapeHtml(job.keyword)}</div>
+            <div class="subtle">Leads ${formatNumber(job.leadCount)} · Shards ${formatNumber(job.completedShards)}/${formatNumber(job.totalShards)} · Updated ${escapeHtml(formatDate(job.updatedAt))}</div>
+          </div>
+        `).join("");
+
+        for (const card of els.jobList.querySelectorAll(".job-card")) {
+          card.addEventListener("click", () => {
+            state.selectedJobId = card.dataset.jobId;
+            const nextUrl = new URL(window.location.href);
+            nextUrl.searchParams.set("jobId", state.selectedJobId);
+            window.history.replaceState({}, "", nextUrl);
+            renderJobs();
+            refreshSelectedJob();
+          });
+        }
+      }
+
+      async function loadJobs() {
+        const payload = await requestJson("/jobs");
+        state.jobs = payload.jobs || [];
+        if (!state.selectedJobId && state.jobs[0]) {
+          state.selectedJobId = state.jobs[0].id;
+        }
+        renderJobs();
+      }
+
+      function setNocoDbDirty(isDirty) {
+        state.nocodbDirty = Boolean(isDirty);
+      }
+
+      async function loadNocoDbConfig(options = {}) {
+        const payload = await requestJson("/integrations/nocodb");
+        state.nocodbConfig = payload;
+        if (state.nocodbDirty && !options.force) {
+          return;
+        }
+        els.nocodbBaseUrl.value = payload.baseUrl || "";
+        els.nocodbApiToken.value = "";
+        els.nocodbApiToken.placeholder = payload.hasApiToken
+          ? "Token saved. Leave blank to keep it."
+          : "API token";
+        els.nocodbBaseId.value = payload.baseId || "";
+        els.nocodbTableId.value = payload.tableId || "";
+        els.nocodbAutoSyncInterval.value = String(payload.autoSyncIntervalMinutes || 0);
+        els.nocodbAutoSync.checked = Boolean(payload.autoSyncOnCompletion);
+        els.nocodbAutoCreateColumns.checked = payload.autoCreateColumns !== false;
+        setNocoDbDirty(false);
+      }
+
+      function nocodbPayloadFromForm(includeToken) {
+        const payload = {
+          baseUrl: els.nocodbBaseUrl.value.trim(),
+          baseId: els.nocodbBaseId.value.trim(),
+          tableId: els.nocodbTableId.value.trim(),
+          autoSyncIntervalMinutes: Number.parseInt(
+            els.nocodbAutoSyncInterval.value || "0",
+            10
+          ) || 0,
+          autoSyncOnCompletion: els.nocodbAutoSync.checked,
+          autoCreateColumns: els.nocodbAutoCreateColumns.checked,
+        };
+
+        if (includeToken || els.nocodbApiToken.value.trim()) {
+          payload.apiToken = els.nocodbApiToken.value.trim();
+        }
+
+        return payload;
+      }
+
+      function renderStats(job, stats, links, syncStatus) {
+        const cards = [
+          ["Leads", formatNumber(job.leadCount)],
+          ["Known shard completion", `${stats.progress.knownShardCompletionRatio}%`],
+          ["Running shards", formatNumber(stats.statusCounts.running)],
+          ["Paused shards", formatNumber(stats.statusCounts.paused)],
+          ["Pending/retry shards", formatNumber(stats.statusCounts.pending + stats.statusCounts.retry)],
+          ["Failed shards", formatNumber(stats.statusCounts.failed)],
+          ["Max split depth", formatNumber(stats.depth.maxDepth)],
+          ["Leads with website", formatNumber(stats.leadCoverage.leadsWithWebsite)],
+          ["Leads with phone", formatNumber(stats.leadCoverage.leadsWithPhone)],
+          ["Leads/hour", stats.throughput.leadsPerHour == null ? "-" : formatNumber(stats.throughput.leadsPerHour)],
+          ["Completed shards/hour", stats.throughput.completedShardsPerHour == null ? "-" : formatNumber(stats.throughput.completedShardsPerHour)],
+          ["Last activity", formatDate(stats.recentActivity.lastActivityAt)],
+        ];
+
+        els.statsGrid.innerHTML = cards.map(([label, value]) => `
+          <div class="stat">
+            <div class="label">${escapeHtml(label)}</div>
+            <div class="value">${escapeHtml(value)}</div>
+          </div>
+        `).join("");
+
+        els.jobTitle.textContent = `${job.country} · ${job.keyword}`;
+        els.jobSubtitle.textContent = `Job ${job.id} · Created ${formatDate(job.createdAt)} · Started ${formatDate(job.startedAt)} · Finished ${formatDate(job.finishedAt)}`;
+        els.jobStatus.innerHTML = badge(job.status);
+        els.jobLinks.innerHTML = `
+          Dashboard permalink: <a href="${escapeHtml(links.dashboard)}">${escapeHtml(links.dashboard)}</a><br>
+          API: <a href="${escapeHtml(links.self)}">${escapeHtml(links.self)}</a> ·
+          <a href="${escapeHtml(links.stats)}">stats</a> ·
+          <a href="${escapeHtml(links.shards)}">shards</a> ·
+          <a href="${escapeHtml(links.errors)}">errors</a> ·
+          <a href="${escapeHtml(links.leads)}">leads</a> ·
+          <a href="${escapeHtml(links.csv)}">csv</a> ·
+          <a href="${escapeHtml(links.json)}">json</a> ·
+          <a href="${escapeHtml(links.nocodbSync)}">nocodb sync</a>
+        `;
+
+        const sync = syncStatus?.sync || {};
+        const telemetry = syncStatus?.telemetry || {};
+        const intervalMinutes = syncStatus?.config?.autoSyncIntervalMinutes || 0;
+        const syncParts = [`NocoDB sync: ${sync.lastStatus || "idle"}`];
+        if (intervalMinutes > 0) {
+          syncParts.push(`incremental every ${intervalMinutes} min`);
+        }
+        if (typeof telemetry.unsyncedLeadCount === "number") {
+          syncParts.push(`${formatNumber(telemetry.unsyncedLeadCount)} unsynced`);
+        }
+        if (telemetry.nextDueAt) {
+          syncParts.push(`next due ${formatDate(telemetry.nextDueAt)}`);
+        }
+        if (sync.lastSyncedAt) {
+          syncParts.push(`last success ${formatDate(sync.lastSyncedAt)}`);
+        }
+        if (sync.lastMessage) {
+          syncParts.push(sync.lastMessage);
+        }
+        els.jobSyncStatus.textContent = syncParts.join(" · ");
+        els.pauseJobButton.disabled = !["pending", "running"].includes(job.status);
+        els.resumeJobButton.disabled = job.status !== "paused";
+        els.cancelJobButton.disabled = ["completed", "partial", "failed", "canceled"].includes(job.status);
+        if (els.deleteJobButton) {
+          els.deleteJobButton.disabled = !["completed", "partial", "failed", "canceled"].includes(job.status);
+        }
+        els.syncNocoDbButton.disabled = !syncStatus?.enabled;
+      }
+
+      function renderShards(payload) {
+        if (!payload.shards.length) {
+          els.shardTableBody.innerHTML = `<tr><td colspan="8" class="empty">No shards for this filter.</td></tr>`;
+          return;
+        }
+
+        els.shardTableBody.innerHTML = payload.shards.map((shard) => `
+          <tr>
+            <td><code>${escapeHtml(shard.id)}</code></td>
+            <td>${badge(shard.status)}</td>
+            <td>${formatNumber(shard.depth)}</td>
+            <td>${formatNumber(shard.resultCount)}</td>
+            <td>${formatNumber(shard.attemptCount)}</td>
+            <td>${escapeHtml(formatDate(shard.nextRunAt))}</td>
+            <td>${escapeHtml(formatDate(shard.updatedAt))}</td>
+            <td><code>${escapeHtml(JSON.stringify(shard.bbox))}</code></td>
+          </tr>
+        `).join("");
+      }
+
+      function renderErrors(payload) {
+        if (!payload.errors.length) {
+          els.errorTableBody.innerHTML = `<tr><td colspan="4" class="empty">No recent errors.</td></tr>`;
+          return;
+        }
+
+        els.errorTableBody.innerHTML = payload.errors.map((shard) => `
+          <tr>
+            <td><code>${escapeHtml(shard.id)}</code></td>
+            <td>${badge(shard.status)}</td>
+            <td>${escapeHtml(shard.lastError || "-")}</td>
+            <td>${escapeHtml(formatDate(shard.updatedAt))}</td>
+          </tr>
+        `).join("");
+      }
+
+      function renderLeads(payload) {
+        if (!payload.leads.length) {
+          els.leadTableBody.innerHTML = `<tr><td colspan="7" class="empty">No leads yet.</td></tr>`;
+          return;
+        }
+
+        els.leadTableBody.innerHTML = payload.leads.map((lead) => `
+          <tr>
+            <td>${escapeHtml(lead.name || "-")}</td>
+            <td>${lead.website ? `<a href="${escapeHtml(lead.website)}" target="_blank" rel="noreferrer">${escapeHtml(lead.website)}</a>` : "-"}</td>
+            <td>${escapeHtml(lead.phone || "-")}</td>
+            <td>${escapeHtml(lead.category || "-")}</td>
+            <td>${escapeHtml(lead.subcategory || "-")}</td>
+            <td>${escapeHtml(
+                lead.reviewCount || lead.reviewRating
+                  ? `${lead.reviewRating ?? "-"} / ${lead.reviewCount ?? 0}`
+                  : "-"
+              )}</td>
+            <td>${escapeHtml((lead.allSubcategories || []).join(" | ") || "-")}</td>
+          </tr>
+        `).join("");
+      }
+
+      async function refreshSelectedJob() {
+        if (!state.selectedJobId) {
+          els.selectedJobEmpty.hidden = false;
+          els.selectedJobView.hidden = true;
+          return;
+        }
+
+        const statusFilter = els.shardStatusFilter.value;
+        const shardUrl = new URL(`/jobs/${state.selectedJobId}/shards`, window.location.origin);
+        shardUrl.searchParams.set("limit", "50");
+        if (statusFilter) {
+          shardUrl.searchParams.set("status", statusFilter);
+        }
+
+        const [jobPayload, shardsPayload, errorsPayload, leadsPayload, syncPayload] = await Promise.all([
+          requestJson(`/jobs/${state.selectedJobId}`),
+          requestJson(shardUrl),
+          requestJson(`/jobs/${state.selectedJobId}/errors?limit=15`),
+          requestJson(`/jobs/${state.selectedJobId}/leads?limit=25&offset=0`),
+          requestJson(`/jobs/${state.selectedJobId}/sync/nocodb`),
+        ]);
+
+        renderStats(jobPayload.job, jobPayload.stats, jobPayload.links, syncPayload);
+        renderShards(shardsPayload);
+        renderErrors(errorsPayload);
+        renderLeads(leadsPayload);
+
+        els.selectedJobEmpty.hidden = true;
+        els.selectedJobView.hidden = false;
+      }
+
+      async function fullRefresh() {
+        try {
+          await loadSession();
+          await loadNocoDbConfig();
+          await loadJobs();
+          await refreshSelectedJob();
+        } catch (error) {
+          setMessage(els.createJobMessage, error.message, true);
+        }
+      }
+
+      els.createJobForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        setMessage(els.createJobMessage, "Creating job...");
+
+        try {
+          const payload = await requestJson("/jobs", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              country: document.getElementById("country").value,
+              keyword: document.getElementById("keyword").value,
+            }),
+          });
+
+          state.selectedJobId = payload.job.id;
+          els.createJobMessage.innerHTML = `Started job <code>${escapeHtml(payload.job.id)}</code>.`;
+          els.createJobMessage.classList.remove("error");
+          document.getElementById("country").value = "";
+          document.getElementById("keyword").value = "";
+          await fullRefresh();
+        } catch (error) {
+          setMessage(els.createJobMessage, error.message, true);
+        }
+      });
+
+      els.nocodbForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        setMessage(els.nocodbMessage, "Saving NocoDB settings...");
+
+        try {
+          const payload = await requestJson("/integrations/nocodb", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(nocodbPayloadFromForm(true)),
+          });
+
+          state.nocodbConfig = payload;
+          await loadNocoDbConfig({ force: true });
+          setMessage(els.nocodbMessage, "NocoDB settings saved.");
+          await refreshSelectedJob();
+        } catch (error) {
+          setMessage(els.nocodbMessage, error.message, true);
+        }
+      });
+
+      els.nocodbTestButton.addEventListener("click", async () => {
+        setMessage(els.nocodbMessage, "Testing NocoDB connection...");
+
+        try {
+          const payload = await requestJson("/integrations/nocodb/test", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(nocodbPayloadFromForm(true)),
+          });
+
+          setMessage(
+            els.nocodbMessage,
+            `Connection OK. Table ${payload.tableId} responded with ${payload.columnCount} columns.`
+          );
+        } catch (error) {
+          setMessage(els.nocodbMessage, error.message, true);
+        }
+      });
+
+      for (const field of els.nocodbForm.querySelectorAll("input")) {
+        const eventName = field.type === "checkbox" ? "change" : "input";
+        field.addEventListener(eventName, () => {
+          setNocoDbDirty(true);
+        });
+      }
+
+      els.refreshJobs.addEventListener("click", () => {
+        fullRefresh().catch((error) => {
+          setMessage(els.createJobMessage, error.message, true);
+        });
+      });
+
+      els.refreshSelected.addEventListener("click", () => {
+        refreshSelectedJob().catch((error) => {
+          setMessage(els.createJobMessage, error.message, true);
+        });
+      });
+
+      els.shardStatusFilter.addEventListener("change", () => {
+        refreshSelectedJob().catch((error) => {
+          setMessage(els.createJobMessage, error.message, true);
+        });
+      });
+
+      els.cancelJobButton.addEventListener("click", async () => {
+        if (!state.selectedJobId) return;
+        setMessage(els.createJobMessage, "Canceling job...");
+        try {
+          await requestJson(`/jobs/${state.selectedJobId}/cancel`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: "{}",
+          });
+          setMessage(els.createJobMessage, "Job canceled.");
+          await fullRefresh();
+        } catch (error) {
+          setMessage(els.createJobMessage, error.message, true);
+        }
+      });
+
+      els.pauseJobButton.addEventListener("click", async () => {
+        if (!state.selectedJobId) return;
+        setMessage(els.createJobMessage, "Pausing job...");
+        try {
+          await requestJson(`/jobs/${state.selectedJobId}/pause`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: "{}",
+          });
+          setMessage(els.createJobMessage, "Job paused.");
+          await fullRefresh();
+        } catch (error) {
+          setMessage(els.createJobMessage, error.message, true);
+        }
+      });
+
+      els.resumeJobButton.addEventListener("click", async () => {
+        if (!state.selectedJobId) return;
+        setMessage(els.createJobMessage, "Resuming job...");
+        try {
+          await requestJson(`/jobs/${state.selectedJobId}/resume`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: "{}",
+          });
+          setMessage(els.createJobMessage, "Job resumed.");
+          await fullRefresh();
+        } catch (error) {
+          setMessage(els.createJobMessage, error.message, true);
+        }
+      });
+
+      if (els.deleteJobButton) {
+        els.deleteJobButton.addEventListener("click", async () => {
+          if (!state.selectedJobId) return;
+          setMessage(els.createJobMessage, "Deleting job...");
+          try {
+            await requestJson(`/jobs/${state.selectedJobId}`, { method: "DELETE" });
+            state.selectedJobId = null;
+            setMessage(els.createJobMessage, "Job deleted.");
+            await fullRefresh();
+          } catch (error) {
+            setMessage(els.createJobMessage, error.message, true);
+          }
+        });
+      }
+
+      els.syncNocoDbButton.addEventListener("click", async () => {
+        if (!state.selectedJobId) return;
+        setMessage(els.nocodbMessage, "Syncing selected job to NocoDB...");
+        try {
+          const payload = await requestJson(`/jobs/${state.selectedJobId}/sync/nocodb`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: "{}",
+          });
+          setMessage(
+            els.nocodbMessage,
+            payload.sync?.lastMessage || `Synced ${payload.syncedRecordCount || 0} records.`
+          );
+          await refreshSelectedJob();
+        } catch (error) {
+          setMessage(els.nocodbMessage, error.message, true);
+        }
+      });
+
+      els.logoutButton.addEventListener("click", async () => {
+        await fetch("/api/auth/logout", { method: "POST" });
+        const next = encodeURIComponent(window.location.pathname + window.location.search);
+        window.location.href = `/login?next=${next}`;
+      });
+
+      fullRefresh();
+      state.refreshTimer = window.setInterval(() => {
+        fullRefresh().catch(() => {});
+      }, 10000);
+    </script>
+  </body>
+</html>

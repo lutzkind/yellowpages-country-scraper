@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Login · YellowPages Country Scraper</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #020617;
+        --panel: #111827;
+        --panel-border: #1f2937;
+        --text: #e5e7eb;
+        --muted: #94a3b8;
+        --accent: #38bdf8;
+        --bad: #f87171;
+      }
+
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        padding: 24px;
+        background: radial-gradient(circle at top, #0f172a, var(--bg));
+        color: var(--text);
+        font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      .card {
+        width: min(100%, 420px);
+        background: var(--panel);
+        border: 1px solid var(--panel-border);
+        border-radius: 18px;
+        padding: 24px;
+        box-shadow: 0 20px 50px rgba(0, 0, 0, 0.35);
+      }
+
+      h1 { margin: 0 0 10px; }
+      p { margin: 0 0 18px; color: var(--muted); }
+
+      form { display: grid; gap: 12px; }
+
+      label { display: grid; gap: 8px; font-size: 14px; }
+
+      input, button {
+        width: 100%;
+        border-radius: 10px;
+        border: 1px solid #334155;
+        background: #0f172a;
+        color: var(--text);
+        padding: 11px 12px;
+        font: inherit;
+      }
+
+      button {
+        cursor: pointer;
+        background: #0284c7;
+        border-color: #0284c7;
+        font-weight: 600;
+      }
+
+      #message { min-height: 20px; font-size: 14px; }
+      .error { color: var(--bad); }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h1>YellowPages scraper login</h1>
+      <p>Sign in with the dashboard admin username and password.</p>
+
+      <form id="login-form">
+        <label>
+          Username
+          <input id="username" name="username" autocomplete="username" required>
+        </label>
+        <label>
+          Password
+          <input id="password" name="password" type="password" autocomplete="current-password" required>
+        </label>
+        <button type="submit">Sign in</button>
+      </form>
+
+      <div id="message"></div>
+    </div>
+
+    <script>
+      const form = document.getElementById("login-form");
+      const message = document.getElementById("message");
+      const params = new URLSearchParams(window.location.search);
+      const next = params.get("next") || "/dashboard";
+
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        message.classList.remove("error");
+        message.textContent = "Signing in...";
+
+        const response = await fetch("/api/auth/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            username: document.getElementById("username").value,
+            password: document.getElementById("password").value,
+          }),
+        });
+
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          message.textContent = payload.error || "Login failed.";
+          message.classList.add("error");
+          return;
+        }
+
+        window.location.href = next;
+      });
+    </script>
+  </body>
+</html>
