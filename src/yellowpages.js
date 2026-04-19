@@ -19,6 +19,15 @@ function queueYPRequest(task, delayMs) {
   return run;
 }
 
+// Nominatim allows 1 req/sec — use the same serial-queue pattern.
+let nominatimThrottle = Promise.resolve();
+
+function queueNominatimRequest(task) {
+  const run = nominatimThrottle.then(task);
+  nominatimThrottle = run.catch(() => undefined).then(() => sleep(1100));
+  return run;
+}
+
 // Coarse-resolution reverse geocode cache (~10 km cells).
 const reverseGeocodeCache = new Map();
 
@@ -31,9 +40,11 @@ async function resolveCountry(country, config) {
     polygon_geojson: "1",
   });
 
-  const response = await fetch(`${config.nominatimUrl}?${params.toString()}`, {
-    headers: { "User-Agent": config.userAgent, Accept: "application/json" },
-  });
+  const response = await queueNominatimRequest(() =>
+    fetch(`${config.nominatimUrl}?${params.toString()}`, {
+      headers: { "User-Agent": config.userAgent, Accept: "application/json" },
+    })
+  );
 
   if (!response.ok) {
     throw new Error(`Nominatim returned ${response.status} while resolving "${country}".`);
@@ -70,9 +81,11 @@ async function reverseGeocode(lat, lon, config) {
     format: "json",
   });
 
-  const response = await fetch(`${reverseUrl}?${params.toString()}`, {
-    headers: { "User-Agent": config.userAgent, Accept: "application/json" },
-  });
+  const response = await queueNominatimRequest(() =>
+    fetch(`${reverseUrl}?${params.toString()}`, {
+      headers: { "User-Agent": config.userAgent, Accept: "application/json" },
+    })
+  );
 
   if (!response.ok) {
     reverseGeocodeCache.set(key, null);
@@ -278,16 +291,13 @@ async function queryYellowPages({ job, shard, geometry, config, exhaustive = fal
   // Exhaustive: paginate up to ypMaxPages
   const allResults = [...firstResults];
   let page = 2;
+  let lastPageSize = firstResults.length;
 
-  while (
-    firstResults.length === 30 &&
-    page <= config.ypMaxPages &&
-    allResults.length < (firstPage.total || 0)
-  ) {
+  while (lastPageSize >= 30 && page <= config.ypMaxPages) {
     const nextPage = await fetchYPPage(locationTerm, keyword, page, config);
     const pageResults = nextPage.results || [];
     allResults.push(...pageResults);
-    if (pageResults.length < 30) break;
+    lastPageSize = pageResults.length;
     page++;
   }
 
