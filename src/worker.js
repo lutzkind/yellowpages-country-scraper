@@ -93,6 +93,7 @@ function createWorker({ store, config, nocoDb = null }) {
         error.statusCode === 403 ||
         error.statusCode === 503 ||
         error.statusCode === 504 ||
+        error.statusCode === 530 || // Cloudflare origin DNS error
         /timeout|rate.limit|blocked/i.test(error.message);
 
       if (store.getJob(job.id)?.status === "canceled") return;

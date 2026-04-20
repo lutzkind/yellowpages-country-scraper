@@ -278,14 +278,33 @@ async function fetchYPPage(locationTerm, keyword, page, config, siteConfig) {
       if (status === 404) {
         return { total: 0, results: [] };
       }
-      if (status >= 400) {
+
+      const pageTitle = (await browserPage.title().catch(() => "")).toLowerCase();
+
+      // "Attention Required!" = Cloudflare hard block (CAPTCHA) — cannot be solved programmatically.
+      // Throw 403 so the shard retries/splits, giving a different IP a chance.
+      if (pageTitle.includes("attention required") || pageTitle.includes("access denied")) {
+        const error = new Error(`YellowPages returned 403 (Cloudflare hard block) for "${locationTerm}"`);
+        error.statusCode = 403;
+        throw error;
+      }
+
+      // "Just a moment..." = Cloudflare JS challenge — Playwright can solve it automatically.
+      // Wait for the post-challenge navigation and then the content to settle.
+      const isCfJsChallenge = status === 403 || status === 503 || pageTitle.includes("just a moment");
+      if (isCfJsChallenge) {
+        await browserPage.waitForNavigation({ waitUntil: "domcontentloaded", timeout: 45000 }).catch(() => {});
+      }
+
+      if (!isCfJsChallenge && status >= 400) {
         const error = new Error(`YellowPages returned ${status} for "${locationTerm}"`);
         error.statusCode = status;
         throw error;
       }
 
+      // Wait for actual result cards to appear (up to 30s after challenge clears).
       await browserPage.waitForSelector(siteConfig.waitSelector, {
-        timeout: 15000,
+        timeout: 30000,
       }).catch(() => {});
 
       const html = await browserPage.content();
@@ -476,39 +495,42 @@ function parseYPAuResults(html) {
 function parseYPCaResults(html) {
   const $ = cheerio.load(html);
 
+  // Result count: "(11450 Result(s))"
   let total = null;
-  const countText = $("[class*='count'], [class*='results-number']").first().text();
+  const countText = $(".resultCount").first().text();
   const countMatch = countText.match(/([\d,]+)/);
   if (countMatch) total = parseInt(countMatch[1].replace(/,/g, ""), 10);
 
   const results = [];
 
-  // CA: .listing__item or .listing__content__wrap--flexed
-  $(".listing__item, .listing-block").each((_, el) => {
+  // Each listing is a .listing__content div with a [data-merchanturl] child
+  $(".listing__content").each((_, el) => {
     const $el = $(el);
 
-    const nameEl = $el.find(".listing__title--wrap a, h3 a, .listing-name a").first();
-    const name = nameEl.text().trim() || null;
+    const name = $el.find(".listing__name--link").text().trim() || null;
     if (!name) return;
 
-    const ypHref = nameEl.attr("href") || null;
-    const ypId = ypHref ? ypHref.split("/").filter(Boolean).pop()?.split("?")[0] || null : null;
-    const ypUrl = ypHref
-      ? ypHref.startsWith("http") ? ypHref : `https://www.yellowpages.ca${ypHref}`
-      : null;
+    // ID and URL from data-merchanturl="/bus/Province/City/Name/12345.html"
+    const merchantPath = ($el.find("[data-merchanturl]").attr("data-merchanturl") || "").split("?")[0];
+    const ypId = merchantPath ? merchantPath.replace(/\.html$/, "").split("/").filter(Boolean).pop() || null : null;
+    const ypUrl = merchantPath ? `https://www.yellowpages.ca${merchantPath}` : null;
 
-    const phone =
-      $el.find("ul.mlr__submenu li h4, .listing-phone, [href^='tel:']").first().text().trim() ||
-      $el.find("[href^='tel:']").first().attr("href")?.replace("tel:", "") ||
+    // Phone: prefer tel: href (clean), fallback to text with digits only
+    const telHref = $el.find("[href^='tel:']").first().attr("href");
+    const phone = telHref
+      ? telHref.replace("tel:", "").trim()
+      : ($el.find("[class*='phone']").first().text().replace(/[^0-9+()\-\s]/g, "").trim() || null);
+
+    const website = $el.find("[class*='website'] a, a[class*='website']").first().attr("href") ||
+      $el.find("a[href^='http']:not([href*='yellowpages'])").first().attr("href") ||
       null;
 
-    const website =
-      $el.find("li.mlr__item--website a, a.website-link").attr("href") ||
-      null;
-
-    const addressText = $el.find(".listing__address--full, [class*='address']").first().text().trim() || null;
-    const street = null; // CA YP shows full address in one field
-    const { city, stateRegion, postcode } = parseLocality(addressText);
+    // Full address "123 Main St, Toronto, ON M5V 2H1" — split at first comma
+    const fullAddress = $el.find(".listing__address--full").text().trim() || null;
+    const commaIdx = fullAddress ? fullAddress.indexOf(",") : -1;
+    const street = commaIdx > 0 ? fullAddress.slice(0, commaIdx).trim() : null;
+    const localityRaw = commaIdx > 0 ? fullAddress.slice(commaIdx + 1).trim() : fullAddress;
+    const { city, stateRegion, postcode } = parseLocality(localityRaw);
 
     const categories = [];
     $el.find("[class*='category'] a, [class*='category'] span").each((_, catEl) => {
