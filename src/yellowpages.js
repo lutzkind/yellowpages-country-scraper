@@ -20,6 +20,7 @@ async function getBrowser(config) {
       "--disable-dev-shm-usage",
       "--disable-setuid-sandbox",
       "--disable-gpu",
+      "--disable-blink-features=AutomationControlled",
     ],
   });
   return _browser;
@@ -150,9 +151,21 @@ async function fetchYPPage(locationTerm, keyword, page, config) {
     if (page > 1) ypUrl.searchParams.set("page", String(page));
 
     const browser = await getBrowser(config);
-    const context = await browser.newContext({
+    const contextOptions = {
       locale: "en-US",
       userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    };
+    if (config.ypProxyUrl) {
+      const u = new URL(config.ypProxyUrl);
+      contextOptions.proxy = {
+        server: `${u.protocol}//${u.hostname}:${u.port}`,
+        username: u.username || undefined,
+        password: u.password || undefined,
+      };
+    }
+    const context = await browser.newContext(contextOptions);
+    await context.addInitScript(() => {
+      Object.defineProperty(navigator, "webdriver", { get: () => undefined });
     });
     const browserPage = await context.newPage();
 

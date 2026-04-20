@@ -62,6 +62,7 @@ module.exports = {
   ypMaxPages: intFromEnv("YP_MAX_PAGES", 10),
   ypTargetShardRadiusMeters: intFromEnv("YP_TARGET_SHARD_RADIUS_METERS", 25000),
   chromiumPath: process.env.CHROMIUM_PATH || "/usr/bin/chromium",
+  ypProxyUrl: process.env.YP_PROXY_URL || null,
   nocoDb: {
     baseUrl: process.env.NOCODB_BASE_URL || null,
     apiToken: process.env.NOCODB_API_TOKEN || null,
