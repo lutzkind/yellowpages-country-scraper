@@ -45,13 +45,13 @@ const YP_SITE_CONFIGS = {
     domain: "www.yellowpages.ca",
     countryName: "CA",
     resultsPerPage: 20,
+    usePlaywright: false, // No Cloudflare — plain fetch is sufficient
     buildSearchUrl(keyword, location, page) {
       const safePage = page > 1 ? page : 1;
       const safeKeyword = encodeURIComponent(keyword);
       const safeLocation = encodeURIComponent(location).replace(/%20/g, "+");
       return `https://www.yellowpages.ca/search/si/${safePage}/${safeKeyword}/${safeLocation}`;
     },
-    waitSelector: ".listing__item, .no-results, .noresults",
     parseResults: parseYPCaResults,
   },
   nz: {
@@ -227,9 +227,18 @@ async function reverseGeocode(lat, lon, config) {
 // YP page fetch (Playwright, works for all country domains)
 // ---------------------------------------------------------------------------
 
+// Resource types that are safe to block — not needed for Cloudflare or HTML parsing.
+// Blocking these cuts per-page bandwidth by ~50-60% for Playwright requests.
+const BLOCKED_RESOURCE_TYPES = new Set(["image", "media", "font"]);
+
 async function fetchYPPage(locationTerm, keyword, page, config, siteConfig) {
   return queueYPRequest(async () => {
     const url = siteConfig.buildSearchUrl(keyword, locationTerm, page);
+
+    // Sites without Cloudflare (e.g. yellowpages.ca) use plain fetch — much cheaper.
+    if (siteConfig.usePlaywright === false) {
+      return fetchYPPagePlain(url, locationTerm, config, siteConfig);
+    }
 
     const browser = await getBrowser(config);
     const contextOptions = {
@@ -250,6 +259,15 @@ async function fetchYPPage(locationTerm, keyword, page, config, siteConfig) {
     });
     const browserPage = await context.newPage();
 
+    // Block images, fonts, and media — not needed for Cloudflare challenge or HTML parsing.
+    await browserPage.route("**/*", (route) => {
+      if (BLOCKED_RESOURCE_TYPES.has(route.request().resourceType())) {
+        route.abort();
+      } else {
+        route.continue();
+      }
+    });
+
     try {
       const response = await browserPage.goto(url, {
         waitUntil: "domcontentloaded",
@@ -258,7 +276,6 @@ async function fetchYPPage(locationTerm, keyword, page, config, siteConfig) {
 
       const status = response?.status() ?? 0;
       if (status === 404) {
-        // Location not in YP's index — treat as empty, not an error.
         return { total: 0, results: [] };
       }
       if (status >= 400) {
@@ -278,6 +295,31 @@ async function fetchYPPage(locationTerm, keyword, page, config, siteConfig) {
       await context.close().catch(() => {});
     }
   }, config.ypDelayMs);
+}
+
+async function fetchYPPagePlain(url, locationTerm, config, siteConfig) {
+  const fetchOptions = {
+    headers: {
+      "User-Agent": config.userAgent,
+      Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      "Accept-Language": "en-US,en;q=0.5",
+    },
+    signal: AbortSignal.timeout(config.ypTimeoutMs),
+  };
+
+  const response = await fetch(url, fetchOptions);
+
+  if (response.status === 404) {
+    return { total: 0, results: [] };
+  }
+  if (!response.ok) {
+    const error = new Error(`YellowPages returned ${response.status} for "${locationTerm}"`);
+    error.statusCode = response.status;
+    throw error;
+  }
+
+  const html = await response.text();
+  return siteConfig.parseResults(html);
 }
 
 // ---------------------------------------------------------------------------

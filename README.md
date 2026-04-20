@@ -25,11 +25,39 @@ When creating a job, set the **Country** field to the two-letter code (`us`, `au
 6. Leads are deduplicated by YellowPages business ID and upserted into SQLite.
 7. When all shards are terminal the job is finalized and artifacts (CSV + JSON) are written.
 
-## Cloudflare bypass
+## Cloudflare bypass and bandwidth
 
-All major YellowPages country domains (`.com`, `.com.au`, `.co.nz`) are protected by Cloudflare. The scraper uses **Playwright headless Chromium** to provide a real Chrome TLS fingerprint that passes bot detection.
+| Source | Bot protection | Fetch method | Why |
+|--------|---------------|--------------|-----|
+| yellowpages.com | Cloudflare | Playwright | Real Chrome fingerprint needed |
+| yellowpages.com.au | Cloudflare | Playwright | Real Chrome fingerprint needed |
+| yellowpages.co.nz | Cloudflare | Playwright | Real Chrome fingerprint needed |
+| yellowpages.ca | None | Plain `fetch` | No bot protection, ~5× cheaper |
 
-For sustained large-scale scraping a **rotating residential proxy** is strongly recommended — set `YP_PROXY_URL` to your proxy's rotating endpoint. A single static IP will be rate-limited or blocked after a few hundred requests.
+Playwright blocks images, fonts, and media so only HTML + JS (needed for Cloudflare) is loaded. This cuts bandwidth by ~50–60% vs a full page load. Canada jobs skip Playwright entirely, reducing bandwidth by ~5×.
+
+### Webshare rotating residential proxy
+
+Set `YP_PROXY_URL` to your Webshare rotating endpoint. Webshare rotates the exit IP on every new connection automatically:
+
+```env
+YP_PROXY_URL=http://<username>:<password>@p.webshare.io:80
+```
+
+Webshare also offers a port-per-country option (port `80` = global rotation). Each new Playwright browser context opens a new connection, so every YP request gets a fresh IP.
+
+A static IP burns out after ~200–500 YP requests. A rotating pool avoids this completely.
+
+### Bandwidth estimates
+
+| Country | Avg shards | Avg pages/shard | Per-page (Playwright) | Total |
+|---------|-----------|----------------|----------------------|-------|
+| US | ~5,000 | 1.5 | ~250 KB | ~2 GB |
+| AU | ~2,000 | 1.5 | ~250 KB | ~750 MB |
+| CA | ~1,500 | 1.5 | ~50 KB (plain fetch) | ~110 MB |
+| NZ | ~500 | 1.2 | ~250 KB | ~150 MB |
+
+Residential proxy bandwidth at Webshare (~$3.50/GB): US ≈ $7, AU ≈ $2.60, CA ≈ $0.40, NZ ≈ $0.53.
 
 ## Requirements
 
@@ -53,9 +81,8 @@ ADMIN_PASSWORD=secret
 # Chromium path (default works for Debian/Ubuntu)
 CHROMIUM_PATH=/usr/bin/chromium
 
-# Optional rotating residential proxy (strongly recommended for large jobs)
-# Format: http://user:pass@host:port  or  http://host:port
-YP_PROXY_URL=http://user:pass@rotating.proxy.example.com:10000
+# Webshare rotating residential proxy (strongly recommended for US/AU/NZ jobs)
+YP_PROXY_URL=http://<username>:<password>@p.webshare.io:80
 
 # Optional NocoDB sync
 NOCODB_BASE_URL=https://nocodb.example.com

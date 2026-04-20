@@ -259,7 +259,13 @@
         <div class="panel">
           <h2>Create job</h2>
           <form id="create-job-form">
-            <input id="country" name="country" placeholder="Country, e.g. United States" required>
+            <select id="country" name="country" required>
+              <option value="" disabled selected>Select YellowPages source</option>
+              <option value="us">United States — yellowpages.com</option>
+              <option value="au">Australia — yellowpages.com.au</option>
+              <option value="ca">Canada — yellowpages.ca</option>
+              <option value="nz">New Zealand — yellowpages.co.nz</option>
+            </select>
             <input id="keyword" name="keyword" placeholder="Keyword, e.g. hotels or restaurants" required>
             <div class="subtle">For broader hospitality coverage, run separate jobs for terms such as <code>hotel</code>, <code>hostel</code>, <code>resort</code>, and <code>inn</code>.</div>
             <button type="submit">Start scrape job</button>
@@ -506,7 +512,7 @@
         els.jobList.innerHTML = state.jobs.map((job) => `
           <div class="job-card ${job.id === state.selectedJobId ? "active" : ""}" data-job-id="${escapeHtml(job.id)}">
             <div class="job-meta">
-              <strong>${escapeHtml(job.country)}</strong>
+              <strong>${escapeHtml(job.countryName || job.country)}</strong>
               ${badge(job.status)}
             </div>
             <div>${escapeHtml(job.keyword)}</div>
@@ -601,7 +607,7 @@
           </div>
         `).join("");
 
-        els.jobTitle.textContent = `${job.country} · ${job.keyword}`;
+        els.jobTitle.textContent = `${job.countryName || job.country} · ${job.keyword}`;
         els.jobSubtitle.textContent = `Job ${job.id} · Created ${formatDate(job.createdAt)} · Started ${formatDate(job.startedAt)} · Finished ${formatDate(job.finishedAt)}`;
         els.jobStatus.innerHTML = badge(job.status);
         els.jobLinks.innerHTML = `
@@ -763,7 +769,7 @@
           state.selectedJobId = payload.job.id;
           els.createJobMessage.innerHTML = `Started job <code>${escapeHtml(payload.job.id)}</code>.`;
           els.createJobMessage.classList.remove("error");
-          document.getElementById("country").value = "";
+          document.getElementById("country").selectedIndex = 0;
           document.getElementById("keyword").value = "";
           await fullRefresh();
         } catch (error) {
