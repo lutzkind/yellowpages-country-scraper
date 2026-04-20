@@ -101,6 +101,11 @@ function createWorker({ store, config, nocoDb = null }) {
         store.splitShard(shard.id, splitBBox(shard.bbox), shard.runToken);
         return;
       }
+      // Leaf shards that can't split: cap 403/blocked retries at 2, then treat as empty.
+      if (isRateOrBlocked && !canSplit && shard.attemptCount >= 2) {
+        store.completeShard(shard.id, [], shard.runToken);
+        return;
+      }
       if (shard.attemptCount < config.retryLimit) {
         const delay = config.retryBaseDelayMs * 2 ** (shard.attemptCount - 1);
         store.retryShard(shard.id, error.message, delay, shard.runToken);

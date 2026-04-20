@@ -176,6 +176,10 @@ async function fetchYPPage(locationTerm, keyword, page, config) {
       });
 
       const status = response?.status() ?? 0;
+      if (status === 404) {
+        // Location not in YP's index — treat as empty, not an error.
+        return { total: 0, results: [] };
+      }
       if (status >= 400) {
         const error = new Error(`YellowPages returned ${status} for "${locationTerm}"`);
         error.statusCode = status;
