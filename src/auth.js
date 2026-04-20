@@ -15,6 +15,7 @@ function createAuth({ store, config }) {
       return { ...session, expiresAt };
     },
     requireAuth(req, res, next) {
+      res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, private");
       if (!this.isConfigured()) return respondAuthNotConfigured(req, res);
       const session = this.currentSession(req);
       if (!session) return respondUnauthorized(req, res);
