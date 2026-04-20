@@ -1,11 +1,19 @@
 const turf = require("@turf/turf");
 const cheerio = require("cheerio");
+const { ProxyAgent } = require("undici");
 const {
   parseBoundingBox,
   bboxCenter,
   pointInsideBBox,
   pointInsideGeometry,
 } = require("./geo");
+
+let _proxyAgent = null;
+function getProxyAgent(proxyUrl) {
+  if (!proxyUrl) return null;
+  if (!_proxyAgent) _proxyAgent = new ProxyAgent(proxyUrl);
+  return _proxyAgent;
+}
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -136,18 +144,20 @@ async function fetchYPPage(locationTerm, keyword, page, config) {
     ypUrl.searchParams.set("geo_location_terms", locationTerm);
     if (page > 1) ypUrl.searchParams.set("page", String(page));
 
-    const requestUrl = config.ypProxyApiUrl
-      ? `${config.ypProxyApiUrl}${encodeURIComponent(ypUrl.toString())}`
-      : ypUrl.toString();
+    const requestUrl = ypUrl.toString();
+    const dispatcher = getProxyAgent(config.ypProxyUrl);
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), config.ypTimeoutMs);
 
     try {
-      const response = await fetch(requestUrl, {
-        headers: config.ypProxyApiUrl ? {} : YP_HEADERS,
+      const fetchOpts = {
+        headers: YP_HEADERS,
         signal: controller.signal,
-      });
+      };
+      if (dispatcher) fetchOpts.dispatcher = dispatcher;
+
+      const response = await fetch(requestUrl, fetchOpts);
 
       if (!response.ok) {
         const error = new Error(`YellowPages returned ${response.status} for "${locationTerm}"`);

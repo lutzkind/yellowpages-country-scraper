@@ -45,11 +45,11 @@ YP_DELAY_MS=1500
 YP_TARGET_SHARD_RADIUS_METERS=25000
 
 # Proxy (required for most server/datacenter IPs — YP blocks them)
-# Recommended: ScraperAPI https://www.scraperapi.com/
-YP_PROXY_API_URL=https://api.scraperapi.com/?api_key=YOUR_KEY&url=
+# Format: http://user:pass@host:port
+YP_PROXY_URL=http://user:pass@host:port
 ```
 
-> **Important:** YellowPages.com blocks datacenter IPs. You need a residential proxy or a scraping API such as [ScraperAPI](https://www.scraperapi.com/) or [Oxylabs](https://oxylabs.io/). Set `YP_PROXY_API_URL` to your provider's URL-wrapping endpoint.
+> **Important:** YellowPages.com blocks datacenter IPs. A residential proxy is required (e.g. [Webshare](https://www.webshare.io/), [Oxylabs](https://oxylabs.io/)). Set `YP_PROXY_URL` to your proxy's `http://user:pass@host:port` URL.
 
 ## Running
 
