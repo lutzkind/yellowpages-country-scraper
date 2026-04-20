@@ -8,6 +8,77 @@ const {
   pointInsideGeometry,
 } = require("./geo");
 
+// ---------------------------------------------------------------------------
+// Per-country YellowPages site configurations
+// ---------------------------------------------------------------------------
+
+const YP_SITE_CONFIGS = {
+  us: {
+    domain: "www.yellowpages.com",
+    countryName: "US",
+    resultsPerPage: 30,
+    buildSearchUrl(keyword, location, page) {
+      const url = new URL("https://www.yellowpages.com/search");
+      url.searchParams.set("search_terms", keyword);
+      url.searchParams.set("geo_location_terms", location);
+      if (page > 1) url.searchParams.set("page", String(page));
+      return url.toString();
+    },
+    waitSelector: ".v-card, .no-results, #no-listings",
+    parseResults: parseYPComResults,
+  },
+  au: {
+    domain: "www.yellowpages.com.au",
+    countryName: "AU",
+    resultsPerPage: 25,
+    buildSearchUrl(keyword, location, page) {
+      const url = new URL("https://www.yellowpages.com.au/search/listings");
+      url.searchParams.set("clue", keyword);
+      url.searchParams.set("locationClue", location);
+      if (page > 1) url.searchParams.set("pageNumber", String(page));
+      return url.toString();
+    },
+    waitSelector: ".search-contact-card, .no-results, .empty-state",
+    parseResults: parseYPAuResults,
+  },
+  ca: {
+    domain: "www.yellowpages.ca",
+    countryName: "CA",
+    resultsPerPage: 20,
+    buildSearchUrl(keyword, location, page) {
+      const safePage = page > 1 ? page : 1;
+      const safeKeyword = encodeURIComponent(keyword);
+      const safeLocation = encodeURIComponent(location).replace(/%20/g, "+");
+      return `https://www.yellowpages.ca/search/si/${safePage}/${safeKeyword}/${safeLocation}`;
+    },
+    waitSelector: ".listing__item, .no-results, .noresults",
+    parseResults: parseYPCaResults,
+  },
+  nz: {
+    domain: "www.yellowpages.co.nz",
+    countryName: "NZ",
+    resultsPerPage: 20,
+    buildSearchUrl(keyword, location, page) {
+      const url = new URL("https://www.yellowpages.co.nz/search");
+      url.searchParams.set("q", keyword);
+      url.searchParams.set("l", location);
+      if (page > 1) url.searchParams.set("page", String(page));
+      return url.toString();
+    },
+    waitSelector: ".listing-item, .no-results",
+    parseResults: parseYPNzResults,
+  },
+};
+
+function getYPSiteConfig(countryCode) {
+  const code = (countryCode || "us").toLowerCase();
+  return YP_SITE_CONFIGS[code] || YP_SITE_CONFIGS.us;
+}
+
+// ---------------------------------------------------------------------------
+// Browser management
+// ---------------------------------------------------------------------------
+
 let _browser = null;
 
 async function getBrowser(config) {
@@ -33,6 +104,10 @@ async function closeBrowser() {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Throttle helpers
+// ---------------------------------------------------------------------------
+
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -53,6 +128,10 @@ function queueNominatimRequest(task) {
   nominatimThrottle = run.catch(() => undefined).then(() => sleep(1100));
   return run;
 }
+
+// ---------------------------------------------------------------------------
+// Nominatim: country resolution + reverse geocoding
+// ---------------------------------------------------------------------------
 
 // Coarse-resolution reverse geocode cache (~10 km cells).
 const reverseGeocodeCache = new Map();
@@ -123,7 +202,8 @@ async function reverseGeocode(lat, lon, config) {
   const countryCode = (addr.country_code || "").toUpperCase();
   const city =
     addr.city || addr.town || addr.village || addr.suburb || addr.county || "";
-  const state = addr.state_code || addr.state || "";
+  // Prefer short state code (NSW, VIC, CA, NY…) over full name
+  const state = addr.state_code || addr["ISO3166-2-lvl4"]?.split("-")[1] || addr.state || "";
   const postcode = addr.postcode || "";
 
   let locationTerm;
@@ -143,12 +223,13 @@ async function reverseGeocode(lat, lon, config) {
   return locationTerm;
 }
 
-async function fetchYPPage(locationTerm, keyword, page, config) {
+// ---------------------------------------------------------------------------
+// YP page fetch (Playwright, works for all country domains)
+// ---------------------------------------------------------------------------
+
+async function fetchYPPage(locationTerm, keyword, page, config, siteConfig) {
   return queueYPRequest(async () => {
-    const ypUrl = new URL("https://www.yellowpages.com/search");
-    ypUrl.searchParams.set("search_terms", keyword);
-    ypUrl.searchParams.set("geo_location_terms", locationTerm);
-    if (page > 1) ypUrl.searchParams.set("page", String(page));
+    const url = siteConfig.buildSearchUrl(keyword, locationTerm, page);
 
     const browser = await getBrowser(config);
     const contextOptions = {
@@ -170,7 +251,7 @@ async function fetchYPPage(locationTerm, keyword, page, config) {
     const browserPage = await context.newPage();
 
     try {
-      const response = await browserPage.goto(ypUrl.toString(), {
+      const response = await browserPage.goto(url, {
         waitUntil: "domcontentloaded",
         timeout: config.ypTimeoutMs,
       });
@@ -186,12 +267,12 @@ async function fetchYPPage(locationTerm, keyword, page, config) {
         throw error;
       }
 
-      await browserPage.waitForSelector(".v-card, .no-results, #no-listings", {
+      await browserPage.waitForSelector(siteConfig.waitSelector, {
         timeout: 15000,
       }).catch(() => {});
 
       const html = await browserPage.content();
-      return parseYPResults(html);
+      return siteConfig.parseResults(html);
     } finally {
       await browserPage.close().catch(() => {});
       await context.close().catch(() => {});
@@ -199,11 +280,14 @@ async function fetchYPPage(locationTerm, keyword, page, config) {
   }, config.ypDelayMs);
 }
 
-function parseYPResults(html) {
+// ---------------------------------------------------------------------------
+// HTML parsers — one per country site
+// ---------------------------------------------------------------------------
+
+function parseYPComResults(html) {
   const $ = cheerio.load(html);
 
   let total = null;
-  // YP shows "Results 1 - 30 of 245" or "Showing 1-30 of 245"
   const countText = $(".showing-count, .count-text").first().text() ||
     $("[class*='showing']").first().text() ||
     $("p:contains('of')").filter((_, el) => /\d+ of \d+/.test($(el).text())).first().text();
@@ -220,14 +304,11 @@ function parseYPResults(html) {
     if (!name) return;
 
     const ypHref = nameEl.attr("href") || null;
-    // ypHref is like "/new-york-ny/mip/acme-plumbing-12345678" — extract the last segment as ID
     const ypId = ypHref
       ? ypHref.split("/").filter(Boolean).pop()?.split("?")[0] || null
       : null;
     const ypUrl = ypHref
-      ? ypHref.startsWith("http")
-        ? ypHref
-        : `https://www.yellowpages.com${ypHref}`
+      ? ypHref.startsWith("http") ? ypHref : `https://www.yellowpages.com${ypHref}`
       : null;
 
     const phone =
@@ -242,28 +323,7 @@ function parseYPResults(html) {
 
     const street = $el.find(".street-address").first().text().trim() || null;
     const localityRaw = $el.find(".locality").first().text().trim() || null;
-
-    let city = null;
-    let stateRegion = null;
-    let postcode = null;
-
-    if (localityRaw) {
-      // Format: "City, ST 12345" or "City, State"
-      const commaIdx = localityRaw.indexOf(",");
-      if (commaIdx !== -1) {
-        city = localityRaw.slice(0, commaIdx).trim();
-        const rest = localityRaw.slice(commaIdx + 1).trim();
-        const parts = rest.split(/\s+/);
-        if (parts.length >= 2) {
-          stateRegion = parts[0] || null;
-          postcode = parts[1] || null;
-        } else {
-          stateRegion = rest || null;
-        }
-      } else {
-        city = localityRaw;
-      }
-    }
+    const { city, stateRegion, postcode } = parseLocality(localityRaw);
 
     const categories = [];
     $el.find(".categories a, .categories span").each((_, catEl) => {
@@ -271,35 +331,25 @@ function parseYPResults(html) {
       if (cat) categories.push(cat);
     });
 
-    // Rating: YP uses star classes or an <em> with numeric rating
     let rating = null;
     const ratingEm = $el.find(".result-rating em, .rating em").first().text().trim();
     if (ratingEm) rating = parseFloat(ratingEm);
     if (!Number.isFinite(rating)) {
-      // Try star class: "rating-stars s45" means 4.5
       const starClass = $el.find("[class*='rating-stars']").attr("class") || "";
       const starMatch = starClass.match(/s(\d+)/);
       if (starMatch) rating = parseInt(starMatch[1], 10) / 10;
     }
 
-    const reviewCountText = $el
-      .find(".count, .review-count")
-      .first()
-      .text()
-      .replace(/[()]/g, "")
-      .trim();
+    const reviewCountText = $el.find(".count, .review-count").first()
+      .text().replace(/[()]/g, "").trim();
     const reviewCount = reviewCountText ? parseInt(reviewCountText, 10) : 0;
 
     results.push({
-      name,
-      ypId,
-      ypUrl,
+      name, ypId, ypUrl,
       phone: phone || null,
       website: website || null,
       street: street || null,
-      city,
-      stateRegion,
-      postcode,
+      city, stateRegion, postcode,
       country: "US",
       categories,
       category: categories[0] || null,
@@ -311,16 +361,223 @@ function parseYPResults(html) {
   return { total, results };
 }
 
+function parseYPAuResults(html) {
+  const $ = cheerio.load(html);
+
+  // AU shows "1 - 25 of 182 results" or similar
+  let total = null;
+  const countText = $("[class*='results-count'], [class*='result-count'], [class*='showing']").first().text() ||
+    $("p, span, div").filter((_, el) => /\d+\s*-\s*\d+\s+of\s+\d+/.test($(el).text())).first().text() ||
+    $("p, span, div").filter((_, el) => /\d+\s+results?/i.test($(el).text()) && !/no results/i.test($(el).text())).first().text();
+  const countMatch = countText.match(/of\s+([\d,]+)/i) || countText.match(/([\d,]+)\s+results?/i);
+  if (countMatch) total = parseInt(countMatch[1].replace(/,/g, ""), 10);
+
+  const results = [];
+
+  // AU uses .search-contact-card as the primary container
+  $(".search-contact-card").each((_, el) => {
+    const $el = $(el);
+
+    // Business name: in an <a> or <h3> element
+    const nameEl = $el.find("h3 a, .listing-name a, a[class*='name'], h3").first();
+    const name = nameEl.text().trim() || null;
+    if (!name) return;
+
+    const ypHref = nameEl.attr("href") || $el.find("a[href*='/business/']").first().attr("href") || null;
+    const ypId = ypHref ? ypHref.split("/").filter(Boolean).pop()?.split("?")[0] || null : null;
+    const ypUrl = ypHref
+      ? ypHref.startsWith("http") ? ypHref : `https://www.yellowpages.com.au${ypHref}`
+      : null;
+
+    // Phone: span.contact-text or similar
+    const phone =
+      $el.find(".contact-text, [class*='phone'], [href^='tel:']").first().text().trim() ||
+      $el.find("[href^='tel:']").first().attr("href")?.replace("tel:", "") ||
+      null;
+
+    // Website: external link with rel=nofollow
+    const website =
+      $el.find("a[href*='website'], a.website-link, a[class*='website']").attr("href") ||
+      $el.find("a[rel='nofollow'][href^='http']:not([href*='yellowpages'])").first().attr("href") ||
+      null;
+
+    // Address
+    const street = $el.find("[class*='address-street'], [class*='street']").first().text().trim() || null;
+    const localityRaw = $el.find("[class*='address-suburb'], [class*='suburb'], [class*='locality']").first().text().trim() ||
+      $el.find("[class*='address']").first().text().trim() || null;
+    const { city, stateRegion, postcode } = parseLocality(localityRaw);
+
+    // Category
+    const categories = [];
+    $el.find("[class*='category'] a, [class*='category'] span").each((_, catEl) => {
+      const cat = $(catEl).text().trim();
+      if (cat) categories.push(cat);
+    });
+
+    results.push({
+      name, ypId, ypUrl,
+      phone: phone || null,
+      website: website || null,
+      street: street || null,
+      city, stateRegion, postcode,
+      country: "AU",
+      categories,
+      category: categories[0] || null,
+      rating: null,
+      reviewCount: 0,
+    });
+  });
+
+  return { total, results };
+}
+
+function parseYPCaResults(html) {
+  const $ = cheerio.load(html);
+
+  let total = null;
+  const countText = $("[class*='count'], [class*='results-number']").first().text();
+  const countMatch = countText.match(/([\d,]+)/);
+  if (countMatch) total = parseInt(countMatch[1].replace(/,/g, ""), 10);
+
+  const results = [];
+
+  // CA: .listing__item or .listing__content__wrap--flexed
+  $(".listing__item, .listing-block").each((_, el) => {
+    const $el = $(el);
+
+    const nameEl = $el.find(".listing__title--wrap a, h3 a, .listing-name a").first();
+    const name = nameEl.text().trim() || null;
+    if (!name) return;
+
+    const ypHref = nameEl.attr("href") || null;
+    const ypId = ypHref ? ypHref.split("/").filter(Boolean).pop()?.split("?")[0] || null : null;
+    const ypUrl = ypHref
+      ? ypHref.startsWith("http") ? ypHref : `https://www.yellowpages.ca${ypHref}`
+      : null;
+
+    const phone =
+      $el.find("ul.mlr__submenu li h4, .listing-phone, [href^='tel:']").first().text().trim() ||
+      $el.find("[href^='tel:']").first().attr("href")?.replace("tel:", "") ||
+      null;
+
+    const website =
+      $el.find("li.mlr__item--website a, a.website-link").attr("href") ||
+      null;
+
+    const addressText = $el.find(".listing__address--full, [class*='address']").first().text().trim() || null;
+    const street = null; // CA YP shows full address in one field
+    const { city, stateRegion, postcode } = parseLocality(addressText);
+
+    const categories = [];
+    $el.find("[class*='category'] a, [class*='category'] span").each((_, catEl) => {
+      const cat = $(catEl).text().trim();
+      if (cat) categories.push(cat);
+    });
+
+    results.push({
+      name, ypId, ypUrl,
+      phone: phone || null,
+      website: website || null,
+      street: street || null,
+      city, stateRegion, postcode,
+      country: "CA",
+      categories,
+      category: categories[0] || null,
+      rating: null,
+      reviewCount: 0,
+    });
+  });
+
+  return { total, results };
+}
+
+function parseYPNzResults(html) {
+  const $ = cheerio.load(html);
+
+  let total = null;
+  const countText = $("[class*='count'], [class*='results']").first().text();
+  const countMatch = countText.match(/([\d,]+)/);
+  if (countMatch) total = parseInt(countMatch[1].replace(/,/g, ""), 10);
+
+  const results = [];
+
+  $(".listing-item, .business-listing, [class*='listing-item']").each((_, el) => {
+    const $el = $(el);
+
+    const nameEl = $el.find("h3 a, .listing-name a, a[class*='name']").first();
+    const name = nameEl.text().trim() || null;
+    if (!name) return;
+
+    const ypHref = nameEl.attr("href") || null;
+    const ypId = ypHref ? ypHref.split("/").filter(Boolean).pop()?.split("?")[0] || null : null;
+    const ypUrl = ypHref
+      ? ypHref.startsWith("http") ? ypHref : `https://www.yellowpages.co.nz${ypHref}`
+      : null;
+
+    const phone =
+      $el.find("[class*='phone'], [href^='tel:']").first().text().trim() ||
+      $el.find("[href^='tel:']").first().attr("href")?.replace("tel:", "") ||
+      null;
+
+    const website =
+      $el.find("a[class*='website'], a[rel='nofollow'][href^='http']").first().attr("href") ||
+      null;
+
+    const localityRaw = $el.find("[class*='address'], [class*='location']").first().text().trim() || null;
+    const { city, stateRegion, postcode } = parseLocality(localityRaw);
+
+    results.push({
+      name, ypId, ypUrl,
+      phone: phone || null,
+      website: website || null,
+      street: null,
+      city, stateRegion, postcode,
+      country: "NZ",
+      categories: [],
+      category: null,
+      rating: null,
+      reviewCount: 0,
+    });
+  });
+
+  return { total, results };
+}
+
+// ---------------------------------------------------------------------------
+// Shared helpers
+// ---------------------------------------------------------------------------
+
+function parseLocality(localityRaw) {
+  if (!localityRaw) return { city: null, stateRegion: null, postcode: null };
+
+  const commaIdx = localityRaw.indexOf(",");
+  if (commaIdx !== -1) {
+    const city = localityRaw.slice(0, commaIdx).trim();
+    const rest = localityRaw.slice(commaIdx + 1).trim();
+    const parts = rest.split(/\s+/);
+    if (parts.length >= 2) {
+      return { city, stateRegion: parts[0] || null, postcode: parts[1] || null };
+    }
+    return { city, stateRegion: rest || null, postcode: null };
+  }
+  return { city: localityRaw, stateRegion: null, postcode: null };
+}
+
+// ---------------------------------------------------------------------------
+// Main query entry point
+// ---------------------------------------------------------------------------
+
 async function queryYellowPages({ job, shard, geometry, config, exhaustive = false }) {
   const center = bboxCenter(shard.bbox);
   const keyword = job.searchParams?.query || job.keyword;
+  const siteConfig = getYPSiteConfig(job.countryCode);
 
   const locationTerm = await reverseGeocode(center.lat, center.lon, config);
   if (!locationTerm) {
     return { rawCount: 0, leads: [] };
   }
 
-  const firstPage = await fetchYPPage(locationTerm, keyword, 1, config);
+  const firstPage = await fetchYPPage(locationTerm, keyword, 1, config, siteConfig);
   const firstResults = firstPage.results || [];
   const total = firstPage.total ?? firstResults.length;
 
@@ -333,8 +590,8 @@ async function queryYellowPages({ job, shard, geometry, config, exhaustive = fal
   let page = 2;
   let lastPageSize = firstResults.length;
 
-  while (lastPageSize >= 30 && page <= config.ypMaxPages) {
-    const nextPage = await fetchYPPage(locationTerm, keyword, page, config);
+  while (lastPageSize >= siteConfig.resultsPerPage && page <= config.ypMaxPages) {
+    const nextPage = await fetchYPPage(locationTerm, keyword, page, config, siteConfig);
     const pageResults = nextPage.results || [];
     allResults.push(...pageResults);
     lastPageSize = pageResults.length;
@@ -413,4 +670,5 @@ module.exports = {
   normalizeEntry,
   extractLocationParts,
   closeBrowser,
+  getYPSiteConfig,
 };

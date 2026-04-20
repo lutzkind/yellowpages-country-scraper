@@ -1,25 +1,41 @@
 # yellowpages-country-scraper
 
-Country-scale YellowPages lead scraper. Give it a country and a keyword, and it recursively splits the country into geographic shards, reverse-geocodes each shard center to a city/state location term, queries YellowPages.com for each shard, deduplicates results, and stores leads in a local SQLite database. Includes a web dashboard, REST API, CSV/JSON exports, and optional NocoDB sync.
+Country-scale YellowPages lead scraper. Give it a country and a keyword, and it recursively splits the country into geographic shards, reverse-geocodes each shard center to a city/state location term, queries the appropriate YellowPages site for each shard, deduplicates results, and stores leads in a local SQLite database. Includes a web dashboard, REST API, CSV/JSON exports, and optional NocoDB sync.
 
 Built to match the architecture of [gmaps-country-scraper](https://github.com/lutzkind/gmaps-country-scraper), [yelp-country-scraper](https://github.com/lutzkind/yelp-country-scraper), and [osm-country-scraper](https://github.com/lutzkind/osm-country-scraper).
+
+## Supported countries
+
+| Country | Site | Results/page |
+|---------|------|-------------|
+| United States (`us`) | yellowpages.com | 30 |
+| Australia (`au`) | yellowpages.com.au | 25 |
+| Canada (`ca`) | yellowpages.ca | 20 |
+| New Zealand (`nz`) | yellowpages.co.nz | 20 |
+
+When creating a job, set the **Country** field to the two-letter code (`us`, `au`, `ca`, `nz`). The scraper automatically routes requests to the correct YellowPages domain, uses the right URL format, and parses the site-specific HTML.
 
 ## How it works
 
 1. A job is created for a country + keyword pair.
 2. The country bounding box (resolved via Nominatim) is seeded as a single root shard.
-3. A worker loop claims shards and probes each one by reverse-geocoding the shard center (Nominatim) to get a `city, STATE` or ZIP code string, then querying YellowPages.com.
-4. If results hit the 30-result page cap and the shard can be split further (radius > `YP_TARGET_SHARD_RADIUS_METERS`), the shard is split into 4 child shards.
+3. A worker loop claims shards and probes each one by reverse-geocoding the shard center (Nominatim) to get a `city, STATE` or suburb string, then querying the appropriate YellowPages site.
+4. If results hit the per-site page cap and the shard can be split further (radius > `YP_TARGET_SHARD_RADIUS_METERS`), the shard is split into 4 child shards.
 5. If the shard is at minimum size, it is exhaustively paginated (up to `YP_MAX_PAGES`).
 6. Leads are deduplicated by YellowPages business ID and upserted into SQLite.
 7. When all shards are terminal the job is finalized and artifacts (CSV + JSON) are written.
 
-> **Note:** YellowPages.com is primarily a US directory. Best results when scraping US locations.
+## Cloudflare bypass
+
+All major YellowPages country domains (`.com`, `.com.au`, `.co.nz`) are protected by Cloudflare. The scraper uses **Playwright headless Chromium** to provide a real Chrome TLS fingerprint that passes bot detection.
+
+For sustained large-scale scraping a **rotating residential proxy** is strongly recommended — set `YP_PROXY_URL` to your proxy's rotating endpoint. A single static IP will be rate-limited or blocked after a few hundred requests.
 
 ## Requirements
 
 - Node.js 22+
-- No API key required — YellowPages is scraped via HTTP.
+- Chromium installed at `CHROMIUM_PATH` (default: `/usr/bin/chromium`)
+- No API key required — YellowPages is scraped via Playwright.
 
 ## Setup
 
@@ -34,6 +50,13 @@ Create a `.env` file (or set environment variables):
 ADMIN_USERNAME=admin
 ADMIN_PASSWORD=secret
 
+# Chromium path (default works for Debian/Ubuntu)
+CHROMIUM_PATH=/usr/bin/chromium
+
+# Optional rotating residential proxy (strongly recommended for large jobs)
+# Format: http://user:pass@host:port  or  http://host:port
+YP_PROXY_URL=http://user:pass@rotating.proxy.example.com:10000
+
 # Optional NocoDB sync
 NOCODB_BASE_URL=https://nocodb.example.com
 NOCODB_API_TOKEN=your_token
@@ -43,7 +66,6 @@ NOCODB_TABLE_ID=your_table_id
 # Optional tuning
 YP_DELAY_MS=1500
 YP_TARGET_SHARD_RADIUS_METERS=25000
-
 ```
 
 ## Running
