@@ -1,6 +1,6 @@
 const turf = require("@turf/turf");
 const cheerio = require("cheerio");
-const { ProxyAgent } = require("undici");
+const { chromium } = require("playwright-core");
 const {
   parseBoundingBox,
   bboxCenter,
@@ -8,11 +8,28 @@ const {
   pointInsideGeometry,
 } = require("./geo");
 
-let _proxyAgent = null;
-function getProxyAgent(proxyUrl) {
-  if (!proxyUrl) return null;
-  if (!_proxyAgent) _proxyAgent = new ProxyAgent(proxyUrl);
-  return _proxyAgent;
+let _browser = null;
+
+async function getBrowser(config) {
+  if (_browser) return _browser;
+  _browser = await chromium.launch({
+    executablePath: config.chromiumPath,
+    headless: true,
+    args: [
+      "--no-sandbox",
+      "--disable-dev-shm-usage",
+      "--disable-setuid-sandbox",
+      "--disable-gpu",
+    ],
+  });
+  return _browser;
+}
+
+async function closeBrowser() {
+  if (_browser) {
+    await _browser.close().catch(() => {});
+    _browser = null;
+  }
 }
 
 function sleep(ms) {
@@ -125,18 +142,6 @@ async function reverseGeocode(lat, lon, config) {
   return locationTerm;
 }
 
-const YP_HEADERS = {
-  "User-Agent":
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-  Accept:
-    "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-  "Accept-Language": "en-US,en;q=0.9",
-  "Accept-Encoding": "gzip, deflate, br",
-  Connection: "keep-alive",
-  "Upgrade-Insecure-Requests": "1",
-  "Cache-Control": "max-age=0",
-};
-
 async function fetchYPPage(locationTerm, keyword, page, config) {
   return queueYPRequest(async () => {
     const ypUrl = new URL("https://www.yellowpages.com/search");
@@ -144,31 +149,35 @@ async function fetchYPPage(locationTerm, keyword, page, config) {
     ypUrl.searchParams.set("geo_location_terms", locationTerm);
     if (page > 1) ypUrl.searchParams.set("page", String(page));
 
-    const requestUrl = ypUrl.toString();
-    const dispatcher = getProxyAgent(config.ypProxyUrl);
-
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), config.ypTimeoutMs);
+    const browser = await getBrowser(config);
+    const context = await browser.newContext({
+      locale: "en-US",
+      userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    });
+    const browserPage = await context.newPage();
 
     try {
-      const fetchOpts = {
-        headers: YP_HEADERS,
-        signal: controller.signal,
-      };
-      if (dispatcher) fetchOpts.dispatcher = dispatcher;
+      const response = await browserPage.goto(ypUrl.toString(), {
+        waitUntil: "domcontentloaded",
+        timeout: config.ypTimeoutMs,
+      });
 
-      const response = await fetch(requestUrl, fetchOpts);
-
-      if (!response.ok) {
-        const error = new Error(`YellowPages returned ${response.status} for "${locationTerm}"`);
-        error.statusCode = response.status;
+      const status = response?.status() ?? 0;
+      if (status >= 400) {
+        const error = new Error(`YellowPages returned ${status} for "${locationTerm}"`);
+        error.statusCode = status;
         throw error;
       }
 
-      const html = await response.text();
+      await browserPage.waitForSelector(".v-card, .no-results, #no-listings", {
+        timeout: 15000,
+      }).catch(() => {});
+
+      const html = await browserPage.content();
       return parseYPResults(html);
     } finally {
-      clearTimeout(timeout);
+      await browserPage.close().catch(() => {});
+      await context.close().catch(() => {});
     }
   }, config.ypDelayMs);
 }
@@ -386,4 +395,5 @@ module.exports = {
   queryYellowPages,
   normalizeEntry,
   extractLocationParts,
+  closeBrowser,
 };

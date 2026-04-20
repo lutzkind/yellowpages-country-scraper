@@ -58,12 +58,10 @@ module.exports = {
   sessionTtlHours: intFromEnv("SESSION_TTL_HOURS", 24),
   // YellowPages request settings
   ypDelayMs: intFromEnv("YP_DELAY_MS", 1500),
-  ypTimeoutMs: intFromEnv("YP_TIMEOUT_MS", 30000),
+  ypTimeoutMs: intFromEnv("YP_TIMEOUT_MS", 60000),
   ypMaxPages: intFromEnv("YP_MAX_PAGES", 10),
   ypTargetShardRadiusMeters: intFromEnv("YP_TARGET_SHARD_RADIUS_METERS", 25000),
-  // Optional: HTTP/HTTPS proxy for YP requests (residential proxy recommended)
-  // Format: http://user:pass@host:port
-  ypProxyUrl: process.env.YP_PROXY_URL || null,
+  chromiumPath: process.env.CHROMIUM_PATH || "/usr/bin/chromium",
   nocoDb: {
     baseUrl: process.env.NOCODB_BASE_URL || null,
     apiToken: process.env.NOCODB_API_TOKEN || null,

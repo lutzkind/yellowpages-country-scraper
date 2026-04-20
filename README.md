@@ -44,12 +44,7 @@ NOCODB_TABLE_ID=your_table_id
 YP_DELAY_MS=1500
 YP_TARGET_SHARD_RADIUS_METERS=25000
 
-# Proxy (required for most server/datacenter IPs — YP blocks them)
-# Format: http://user:pass@host:port
-YP_PROXY_URL=http://user:pass@host:port
 ```
-
-> **Important:** YellowPages.com blocks datacenter IPs. A residential proxy is required (e.g. [Webshare](https://www.webshare.io/), [Oxylabs](https://oxylabs.io/)). Set `YP_PROXY_URL` to your proxy's `http://user:pass@host:port` URL.
 
 ## Running
 

@@ -3,6 +3,7 @@ const { createStore } = require("./src/store");
 const { createWorker } = require("./src/worker");
 const { createApp } = require("./src/server");
 const { createNocoDbService } = require("./src/nocodb");
+const { closeBrowser } = require("./src/yellowpages");
 const config = require("./src/config");
 
 fs.mkdirSync(config.dataDir, { recursive: true });
@@ -28,3 +29,11 @@ const server = app.listen(config.port, config.host, () => {
       });
     });
 });
+
+async function shutdown() {
+  worker.stop();
+  await closeBrowser();
+  server.close();
+}
+process.once("SIGTERM", shutdown);
+process.once("SIGINT", shutdown);

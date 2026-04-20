@@ -13,6 +13,7 @@
     "@turf/turf": "^7.3.4",
     "better-sqlite3": "^12.8.0",
     "cheerio": "^1.0.0",
-    "express": "^5.2.1"
+    "express": "^5.2.1",
+    "playwright-core": "^1.52.0"
   }
 }
