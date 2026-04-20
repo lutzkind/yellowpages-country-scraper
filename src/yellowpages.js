@@ -131,17 +131,21 @@ const YP_HEADERS = {
 
 async function fetchYPPage(locationTerm, keyword, page, config) {
   return queueYPRequest(async () => {
-    const url = new URL("https://www.yellowpages.com/search");
-    url.searchParams.set("search_terms", keyword);
-    url.searchParams.set("geo_location_terms", locationTerm);
-    if (page > 1) url.searchParams.set("page", String(page));
+    const ypUrl = new URL("https://www.yellowpages.com/search");
+    ypUrl.searchParams.set("search_terms", keyword);
+    ypUrl.searchParams.set("geo_location_terms", locationTerm);
+    if (page > 1) ypUrl.searchParams.set("page", String(page));
+
+    const requestUrl = config.ypProxyApiUrl
+      ? `${config.ypProxyApiUrl}${encodeURIComponent(ypUrl.toString())}`
+      : ypUrl.toString();
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), config.ypTimeoutMs);
 
     try {
-      const response = await fetch(url.toString(), {
-        headers: YP_HEADERS,
+      const response = await fetch(requestUrl, {
+        headers: config.ypProxyApiUrl ? {} : YP_HEADERS,
         signal: controller.signal,
       });
 

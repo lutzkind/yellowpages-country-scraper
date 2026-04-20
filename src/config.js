@@ -61,6 +61,9 @@ module.exports = {
   ypTimeoutMs: intFromEnv("YP_TIMEOUT_MS", 30000),
   ypMaxPages: intFromEnv("YP_MAX_PAGES", 10),
   ypTargetShardRadiusMeters: intFromEnv("YP_TARGET_SHARD_RADIUS_METERS", 25000),
+  // Optional: proxy URL prefix for YP requests, e.g. ScraperAPI:
+  // https://api.scraperapi.com/?api_key=KEY&url=
+  ypProxyApiUrl: process.env.YP_PROXY_API_URL || null,
   nocoDb: {
     baseUrl: process.env.NOCODB_BASE_URL || null,
     apiToken: process.env.NOCODB_API_TOKEN || null,
