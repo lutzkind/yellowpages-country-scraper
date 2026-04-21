@@ -6,14 +6,24 @@ Built to match the architecture of [gmaps-country-scraper](https://github.com/lu
 
 ## Supported countries
 
-| Country | Site | Results/page |
-|---------|------|-------------|
-| United States (`us`) | yellowpages.com | 30 |
-| Australia (`au`) | yellowpages.com.au | 25 |
-| Canada (`ca`) | yellowpages.ca | 20 |
-| New Zealand (`nz`) | yellowpages.co.nz | 20 |
+| Country | Site | Results/page | Status |
+|---------|------|-------------|--------|
+| United States (`us`) | yellowpages.com | 30 | Working |
+| Australia (`au`) | yellowpages.com.au | 25 | Working |
+| Canada (`ca`) | yellowpages.ca | 20 | Working |
+| New Zealand (`nz`) | yellowpages.co.nz | 20 | **Geo-restricted** (see below) |
 
 When creating a job, set the **Country** field to the two-letter code (`us`, `au`, `ca`, `nz`). The scraper automatically routes requests to the correct YellowPages domain, uses the right URL format, and parses the site-specific HTML.
+
+### New Zealand geo-restriction
+
+`yellowpages.co.nz` is served behind AWS CloudFront with a geo-restriction that blocks all non-NZ IPs. This means:
+
+- NZ jobs will fail unless the proxy exit IP is located in New Zealand.
+- Webshare's rotating residential proxy pool has no New Zealand exit IPs.
+- Alternative NZ directories (`finda.co.nz`, `nzpages.co.nz`) were also tested and are unreachable via non-NZ IPs.
+
+To enable NZ scraping you need a proxy provider with New Zealand residential IPs. Set `YP_PROXY_URL` to that provider's endpoint when running NZ jobs.
 
 ## How it works
 
@@ -47,6 +57,12 @@ YP_PROXY_URL=http://<username>:<password>@p.webshare.io:80
 Webshare also offers a port-per-country option (port `80` = global rotation). Each new Playwright browser context opens a new connection, so every YP request gets a fresh IP.
 
 A static IP burns out after ~200–500 YP requests. A rotating pool avoids this completely.
+
+> **Note:** Webshare's rotating pool does not include New Zealand exit IPs. NZ jobs require a different proxy provider with NZ residential IPs.
+
+### Stealth / Cloudflare bypass
+
+US and AU jobs use [`playwright-extra`](https://github.com/berstend/puppeteer-extra/tree/master/packages/playwright-extra) with the `puppeteer-extra-plugin-stealth` plugin. This patches the Chromium fingerprint so Cloudflare Turnstile does not present a CAPTCHA challenge when browsing through residential proxy IPs.
 
 ### Bandwidth estimates
 
