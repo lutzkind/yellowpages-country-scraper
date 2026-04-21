@@ -80,8 +80,8 @@ function createStore(config) {
       state_region TEXT,
       postcode TEXT,
       country TEXT,
-      lat REAL NOT NULL,
-      lon REAL NOT NULL,
+      lat REAL,
+      lon REAL,
       review_count INTEGER NOT NULL DEFAULT 0,
       review_rating REAL,
       business_status TEXT,
@@ -132,6 +132,7 @@ function createStore(config) {
     ["country", "TEXT"],
   ]);
   ensureLeadColumns(db, "shards", [["run_token", "TEXT"]]);
+  migrateDropLatLonNotNull(db);
   backfillLeadLocations(db);
 
   resetRunningShards(db);
@@ -1360,6 +1361,39 @@ function buildOwnedRunningShardParams(params) {
 function omitRunToken(params) {
   const { runToken, ...rest } = params;
   return rest;
+}
+
+function migrateDropLatLonNotNull(db) {
+  const cols = db.prepare("PRAGMA table_info(leads)").all();
+  const latCol = cols.find((c) => c.name === "lat");
+  if (!latCol || !latCol.notnull) return;
+  db.pragma("foreign_keys = OFF");
+  db.transaction(() => {
+    db.exec(`
+      CREATE TABLE leads_migration (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        job_id TEXT NOT NULL,
+        dedupe_key TEXT NOT NULL,
+        place_id TEXT, cid TEXT, data_id TEXT, link TEXT, name TEXT, category TEXT,
+        categories_json TEXT NOT NULL,
+        website TEXT, phone TEXT, email TEXT, address TEXT,
+        complete_address_json TEXT NOT NULL,
+        city TEXT, area TEXT, state_region TEXT, postcode TEXT, country TEXT,
+        lat REAL, lon REAL,
+        review_count INTEGER NOT NULL DEFAULT 0,
+        review_rating REAL, business_status TEXT, price_range TEXT,
+        source_bbox_json TEXT NOT NULL,
+        raw_json TEXT NOT NULL,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+        UNIQUE(job_id, dedupe_key),
+        FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE
+      );
+      INSERT INTO leads_migration SELECT * FROM leads;
+      DROP TABLE leads;
+      ALTER TABLE leads_migration RENAME TO leads;
+    `);
+  })();
+  db.pragma("foreign_keys = ON");
 }
 
 function ensureLeadColumns(db, tableName, columns) {

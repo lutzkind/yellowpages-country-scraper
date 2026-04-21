@@ -1,6 +1,8 @@
 const turf = require("@turf/turf");
 const cheerio = require("cheerio");
-const { chromium } = require("playwright-core");
+const { chromium } = require("playwright-extra");
+const StealthPlugin = require("puppeteer-extra-plugin-stealth");
+chromium.use(StealthPlugin());
 const {
   parseBoundingBox,
   bboxCenter,
@@ -38,7 +40,7 @@ const YP_SITE_CONFIGS = {
       if (page > 1) url.searchParams.set("pageNumber", String(page));
       return url.toString();
     },
-    waitSelector: ".search-contact-card, .no-results, .empty-state",
+    waitSelector: ".v-card, .no-results, .empty-state",
     parseResults: parseYPAuResults,
   },
   ca: {
@@ -247,16 +249,15 @@ async function fetchYPPage(locationTerm, keyword, page, config, siteConfig) {
     };
     if (config.ypProxyUrl) {
       const u = new URL(config.ypProxyUrl);
+      // Strip sticky-session suffix (e.g. "user-1" → "user") so Webshare rotates the exit IP.
+      const username = u.username ? u.username.replace(/-\d+$/, "") : undefined;
       contextOptions.proxy = {
         server: `${u.protocol}//${u.hostname}:${u.port}`,
-        username: u.username || undefined,
+        username: username || undefined,
         password: u.password || undefined,
       };
     }
     const context = await browser.newContext(contextOptions);
-    await context.addInitScript(() => {
-      Object.defineProperty(navigator, "webdriver", { get: () => undefined });
-    });
     const browserPage = await context.newPage();
 
     // Block images, fonts, and media — not needed for Cloudflare challenge or HTML parsing.
@@ -270,7 +271,7 @@ async function fetchYPPage(locationTerm, keyword, page, config, siteConfig) {
 
     try {
       const response = await browserPage.goto(url, {
-        waitUntil: "domcontentloaded",
+        waitUntil: "load",
         timeout: config.ypTimeoutMs,
       });
 
@@ -425,55 +426,58 @@ function parseYPComResults(html) {
 function parseYPAuResults(html) {
   const $ = cheerio.load(html);
 
-  // AU shows "1 - 25 of 182 results" or similar
   let total = null;
-  const countText = $("[class*='results-count'], [class*='result-count'], [class*='showing']").first().text() ||
-    $("p, span, div").filter((_, el) => /\d+\s*-\s*\d+\s+of\s+\d+/.test($(el).text())).first().text() ||
-    $("p, span, div").filter((_, el) => /\d+\s+results?/i.test($(el).text()) && !/no results/i.test($(el).text())).first().text();
-  const countMatch = countText.match(/of\s+([\d,]+)/i) || countText.match(/([\d,]+)\s+results?/i);
+  const countText = $(".showing-count, .count-text").first().text() ||
+    $("[class*='showing']").first().text() ||
+    $("p:contains('of')").filter((_, el) => /\d+ of \d+/.test($(el).text())).first().text();
+  const countMatch = countText.match(/of\s+([\d,]+)/i);
   if (countMatch) total = parseInt(countMatch[1].replace(/,/g, ""), 10);
 
   const results = [];
 
-  // AU uses .search-contact-card as the primary container
-  $(".search-contact-card").each((_, el) => {
+  // yellowpages.com.au uses the same HTML structure as yellowpages.com
+  $(".v-card").each((_, el) => {
     const $el = $(el);
 
-    // Business name: in an <a> or <h3> element
-    const nameEl = $el.find("h3 a, .listing-name a, a[class*='name'], h3").first();
+    const nameEl = $el.find("a.business-name");
     const name = nameEl.text().trim() || null;
     if (!name) return;
 
-    const ypHref = nameEl.attr("href") || $el.find("a[href*='/business/']").first().attr("href") || null;
-    const ypId = ypHref ? ypHref.split("/").filter(Boolean).pop()?.split("?")[0] || null : null;
+    const ypHref = nameEl.attr("href") || null;
+    const ypId = ypHref
+      ? ypHref.split("/").filter(Boolean).pop()?.split("?")[0] || null
+      : null;
     const ypUrl = ypHref
       ? ypHref.startsWith("http") ? ypHref : `https://www.yellowpages.com.au${ypHref}`
       : null;
 
-    // Phone: span.contact-text or similar
     const phone =
-      $el.find(".contact-text, [class*='phone'], [href^='tel:']").first().text().trim() ||
-      $el.find("[href^='tel:']").first().attr("href")?.replace("tel:", "") ||
+      $el.find(".phones.phone.primary").first().text().trim() ||
+      $el.find(".phone").first().text().trim() ||
       null;
 
-    // Website: external link with rel=nofollow
     const website =
-      $el.find("a[href*='website'], a.website-link, a[class*='website']").attr("href") ||
-      $el.find("a[rel='nofollow'][href^='http']:not([href*='yellowpages'])").first().attr("href") ||
+      $el.find("a.website").attr("href") ||
+      $el.find("a[class*='website']").attr("href") ||
       null;
 
-    // Address
-    const street = $el.find("[class*='address-street'], [class*='street']").first().text().trim() || null;
-    const localityRaw = $el.find("[class*='address-suburb'], [class*='suburb'], [class*='locality']").first().text().trim() ||
-      $el.find("[class*='address']").first().text().trim() || null;
+    const street = $el.find(".street-address").first().text().trim() || null;
+    const localityRaw = $el.find(".locality").first().text().trim() || null;
     const { city, stateRegion, postcode } = parseLocality(localityRaw);
 
-    // Category
     const categories = [];
-    $el.find("[class*='category'] a, [class*='category'] span").each((_, catEl) => {
+    $el.find(".categories a, .categories span").each((_, catEl) => {
       const cat = $(catEl).text().trim();
       if (cat) categories.push(cat);
     });
+
+    let rating = null;
+    const ratingEm = $el.find(".result-rating em, .rating em").first().text().trim();
+    if (ratingEm) rating = parseFloat(ratingEm);
+
+    const reviewCountText = $el.find(".count, .review-count").first()
+      .text().replace(/[()]/g, "").trim();
+    const reviewCount = reviewCountText ? parseInt(reviewCountText, 10) : 0;
 
     results.push({
       name, ypId, ypUrl,
@@ -484,8 +488,8 @@ function parseYPAuResults(html) {
       country: "AU",
       categories,
       category: categories[0] || null,
-      rating: null,
-      reviewCount: 0,
+      rating: Number.isFinite(rating) ? rating : null,
+      reviewCount: Number.isFinite(reviewCount) ? reviewCount : 0,
     });
   });
 
