@@ -168,7 +168,7 @@ async function resolveCountry(country, config) {
 
   return {
     displayName: first.display_name,
-    countryCode: first.address?.country_code || null,
+    countryCode: first.address?.country_code || country || null,
     bbox: parseBoundingBox(first.boundingbox),
     geometry,
     raw: first,
