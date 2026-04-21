@@ -849,7 +849,7 @@ function createStore(config) {
             WHERE s.status IN ('pending', 'retry')
               AND s.next_run_at <= @timestamp
               AND j.status = 'running'
-            ORDER BY s.depth DESC, s.updated_at ASC, s.id ASC
+            ORDER BY s.updated_at ASC, s.depth DESC, s.id ASC
             LIMIT 1
           `
         )
