@@ -258,6 +258,11 @@ function buildProxyConfig(proxyUrl, countryCode) {
   };
 }
 
+function getProxyUrlForCountry(config, countryCode) {
+  const code = String(countryCode || "").toLowerCase();
+  return config.ypProxyUrls?.[code] || config.ypProxyUrl || null;
+}
+
 async function fetchYPPage(locationTerm, keyword, page, config, siteConfig) {
   return queueYPRequest(async () => {
     const url = siteConfig.buildSearchUrl(keyword, locationTerm, page);
@@ -272,7 +277,10 @@ async function fetchYPPage(locationTerm, keyword, page, config, siteConfig) {
       locale: "en-US",
       userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
     };
-    const proxyConfig = buildProxyConfig(config.ypProxyUrl, siteConfig.countryName);
+    const proxyConfig = buildProxyConfig(
+      getProxyUrlForCountry(config, siteConfig.countryName),
+      siteConfig.countryName
+    );
     if (proxyConfig) contextOptions.proxy = proxyConfig;
     const context = await browser.newContext(contextOptions);
     const browserPage = await context.newPage();

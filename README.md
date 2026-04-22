@@ -68,6 +68,19 @@ Set `YP_PROXY_URL` to your Webshare rotating endpoint. The scraper will derive t
 YP_PROXY_URL=http://<username>:<password>@p.webshare.io:80
 ```
 
+To override a specific country, set a per-country proxy URL:
+
+```env
+# Example: keep US on a static proxy, other countries on rotating Webshare
+YP_PROXY_URL_US=http://vxsvjzyw:ogxh8zxqcnd6@208.66.78.24:5055
+```
+
+Supported overrides:
+- `YP_PROXY_URL_US`
+- `YP_PROXY_URL_AU`
+- `YP_PROXY_URL_CA`
+- `YP_PROXY_URL_NZ`
+
 Webshare also offers a port-per-country option (port `80` = global rotation). Each new Playwright browser context opens a new connection, so every YP request gets a fresh IP.
 
 A static IP burns out after ~200–500 YP requests. A rotating pool avoids this completely.

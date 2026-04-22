@@ -63,6 +63,12 @@ module.exports = {
   ypTargetShardRadiusMeters: intFromEnv("YP_TARGET_SHARD_RADIUS_METERS", 25000),
   chromiumPath: process.env.CHROMIUM_PATH || "/usr/bin/chromium",
   ypProxyUrl: process.env.YP_PROXY_URL || null,
+  ypProxyUrls: {
+    us: process.env.YP_PROXY_URL_US || null,
+    au: process.env.YP_PROXY_URL_AU || null,
+    ca: process.env.YP_PROXY_URL_CA || null,
+    nz: process.env.YP_PROXY_URL_NZ || null,
+  },
   nocoDb: {
     baseUrl: process.env.NOCODB_BASE_URL || null,
     apiToken: process.env.NOCODB_API_TOKEN || null,
