@@ -9,11 +9,21 @@ Built to match the architecture of [gmaps-country-scraper](https://github.com/lu
 | Country | Site | Results/page | Status |
 |---------|------|-------------|--------|
 | United States (`us`) | yellowpages.com | 30 | Working |
-| Australia (`au`) | yellowpages.com.au | 25 | Working |
+| Australia (`au`) | yellowpages.com.au | 25 | **CF-blocked** (see below) |
 | Canada (`ca`) | yellowpages.ca | 20 | Working |
 | New Zealand (`nz`) | yellowpages.co.nz | 20 | **Geo-restricted** (see below) |
 
 When creating a job, set the **Country** field to the two-letter code (`us`, `au`, `ca`, `nz`). The scraper automatically routes requests to the correct YellowPages domain, uses the right URL format, and parses the site-specific HTML.
+
+### Australia Cloudflare block
+
+`yellowpages.com.au` is protected by Cloudflare Turnstile in a way that consistently blocks non-Australian proxy IPs. Testing confirmed:
+
+- Every request from a non-AU exit IP receives a Cloudflare challenge that is never resolved, even with `playwright-extra` + stealth plugin.
+- Webshare's rotating residential proxy pool does not guarantee Australian exit IPs, so all queries are blocked.
+- The scraper correctly detects the unsolved challenge and retries with fresh IPs, but all attempts fail.
+
+To enable AU scraping you need a proxy provider with Australian residential IPs. Set `YP_PROXY_URL` to that provider's endpoint when running AU jobs.
 
 ### New Zealand geo-restriction
 
