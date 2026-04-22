@@ -34,10 +34,10 @@ const YP_SITE_CONFIGS = {
     countryName: "AU",
     resultsPerPage: 25,
     buildSearchUrl(keyword, location, page) {
-      const url = new URL("https://www.yellowpages.com.au/search/listings");
-      url.searchParams.set("clue", keyword);
-      url.searchParams.set("locationClue", location);
-      if (page > 1) url.searchParams.set("pageNumber", String(page));
+      const keywordSlug = slugAuPathSegment(keyword);
+      const locationSlug = slugAuPathSegment(location);
+      const url = new URL(`https://www.yellowpages.com.au/${locationSlug}/${keywordSlug}`);
+      if (page > 1) url.searchParams.set("page", String(page));
       return url.toString();
     },
     waitSelector: ".v-card, .no-results, .empty-state",
@@ -233,6 +233,31 @@ async function reverseGeocode(lat, lon, config) {
 // Blocking these cuts per-page bandwidth by ~50-60% for Playwright requests.
 const BLOCKED_RESOURCE_TYPES = new Set(["image", "media", "font"]);
 
+function buildProxyConfig(proxyUrl, countryCode) {
+  if (!proxyUrl) return null;
+
+  const u = new URL(proxyUrl);
+  let username = u.username || undefined;
+
+  if (username && u.hostname === "p.webshare.io" && countryCode) {
+    // Webshare rotating residential uses username suffixes for country targeting.
+    // Strip sticky-session / prior country / rotate suffixes and rebuild per request.
+    const baseUsername = username
+      .replace(/-\d+$/, "")
+      .replace(/-(us|ca|au|nz)(-rotate)?$/i, "")
+      .replace(/-rotate$/i, "");
+    username = `${baseUsername}-${countryCode.toLowerCase()}-rotate`;
+  } else if (username) {
+    username = username.replace(/-\d+$/, "");
+  }
+
+  return {
+    server: `${u.protocol}//${u.hostname}:${u.port}`,
+    username: username || undefined,
+    password: u.password || undefined,
+  };
+}
+
 async function fetchYPPage(locationTerm, keyword, page, config, siteConfig) {
   return queueYPRequest(async () => {
     const url = siteConfig.buildSearchUrl(keyword, locationTerm, page);
@@ -247,16 +272,8 @@ async function fetchYPPage(locationTerm, keyword, page, config, siteConfig) {
       locale: "en-US",
       userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
     };
-    if (config.ypProxyUrl) {
-      const u = new URL(config.ypProxyUrl);
-      // Strip sticky-session suffix (e.g. "user-1" → "user") so Webshare rotates the exit IP.
-      const username = u.username ? u.username.replace(/-\d+$/, "") : undefined;
-      contextOptions.proxy = {
-        server: `${u.protocol}//${u.hostname}:${u.port}`,
-        username: username || undefined,
-        password: u.password || undefined,
-      };
-    }
+    const proxyConfig = buildProxyConfig(config.ypProxyUrl, siteConfig.countryName);
+    if (proxyConfig) contextOptions.proxy = proxyConfig;
     const context = await browser.newContext(contextOptions);
     const browserPage = await context.newPage();
 
@@ -638,6 +655,15 @@ function parseLocality(localityRaw) {
     return { city, stateRegion: rest || null, postcode: null };
   }
   return { city: localityRaw, stateRegion: null, postcode: null };
+}
+
+function slugAuPathSegment(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/['’]/g, "")
+    .replace(/,/g, " ")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
 }
 
 // ---------------------------------------------------------------------------

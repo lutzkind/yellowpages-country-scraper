@@ -9,31 +9,35 @@ Built to match the architecture of [gmaps-country-scraper](https://github.com/lu
 | Country | Site | Results/page | Status |
 |---------|------|-------------|--------|
 | United States (`us`) | yellowpages.com | 30 | Working |
-| Australia (`au`) | yellowpages.com.au | 25 | **CF-blocked** (see below) |
+| Australia (`au`) | yellowpages.com.au | 25 | Working with AU-targeted proxy |
 | Canada (`ca`) | yellowpages.ca | 20 | Working |
 | New Zealand (`nz`) | yellowpages.co.nz | 20 | **Geo-restricted** (see below) |
 
 When creating a job, set the **Country** field to the two-letter code (`us`, `au`, `ca`, `nz`). The scraper automatically routes requests to the correct YellowPages domain, uses the right URL format, and parses the site-specific HTML.
 
-### Australia Cloudflare block
+### Australia proxy requirement
 
-`yellowpages.com.au` is protected by Cloudflare Turnstile in a way that consistently blocks non-Australian proxy IPs. Testing confirmed:
+`yellowpages.com.au` is protected by Cloudflare Turnstile. It works when the exit IP is actually in Australia, and fails when the proxy exits in another country.
 
-- Every request from a non-AU exit IP receives a Cloudflare challenge that is never resolved, even with `playwright-extra` + stealth plugin.
-- Webshare's rotating residential proxy pool does not guarantee Australian exit IPs, so all queries are blocked.
-- The scraper correctly detects the unsolved challenge and retries with fresh IPs, but all attempts fail.
+- The scraper now rewrites Webshare rotating usernames per source country automatically:
+  - `...@p.webshare.io:80` + `us` job -> `username-us-rotate`
+  - `...@p.webshare.io:80` + `au` job -> `username-au-rotate`
+  - `...@p.webshare.io:80` + `ca` job -> `username-ca-rotate`
+  - `...@p.webshare.io:80` + `nz` job -> `username-nz-rotate`
+- With an AU-targeted Webshare username, live testing confirmed `yellowpages.com.au` returns `200` and parses real results.
+- With non-AU exits, AU requests stay on the Cloudflare challenge and eventually fail.
 
-To enable AU scraping you need a proxy provider with Australian residential IPs. Set `YP_PROXY_URL` to that provider's endpoint when running AU jobs.
+### New Zealand limitation on Webshare
 
-### New Zealand geo-restriction
+`yellowpages.co.nz` still does not work through Webshare in this setup. Testing confirmed:
 
-`yellowpages.co.nz` is served behind AWS CloudFront with a geo-restriction that blocks all non-NZ IPs. This means:
+- `username-nz-rotate` returns a New Zealand IP for simple IP checks.
+- But requests to `yellowpages.co.nz` fail at the proxy layer with `X-Webshare-Reason: target_connect_unknown_error` / `502 CONNECT tunnel failed`.
+- So the blocker is specifically Webshare's route to that target, not the scraper logic.
 
-- NZ jobs will fail unless the proxy exit IP is located in New Zealand.
-- Webshare's rotating residential proxy pool has no New Zealand exit IPs.
-- Alternative NZ directories (`finda.co.nz`, `nzpages.co.nz`) were also tested and are unreachable via non-NZ IPs.
-
-To enable NZ scraping you need a proxy provider with New Zealand residential IPs. Set `YP_PROXY_URL` to that provider's endpoint when running NZ jobs.
+To enable NZ scraping you need either:
+- a different NZ-capable residential proxy provider, or
+- a Webshare fix/workaround for `yellowpages.co.nz`.
 
 ## How it works
 
@@ -58,7 +62,7 @@ Playwright blocks images, fonts, and media so only HTML + JS (needed for Cloudfl
 
 ### Webshare rotating residential proxy
 
-Set `YP_PROXY_URL` to your Webshare rotating endpoint. Webshare rotates the exit IP on every new connection automatically:
+Set `YP_PROXY_URL` to your Webshare rotating endpoint. The scraper will derive the country-targeted rotating username automatically for `us`, `au`, `ca`, and `nz`:
 
 ```env
 YP_PROXY_URL=http://<username>:<password>@p.webshare.io:80
