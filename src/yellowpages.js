@@ -294,7 +294,7 @@ async function fetchYPPage(locationTerm, keyword, page, config, siteConfig) {
       // Wait for the post-challenge navigation and then the content to settle.
       const isCfJsChallenge = status === 403 || status === 503 || pageTitle.includes("just a moment");
       if (isCfJsChallenge) {
-        await browserPage.waitForNavigation({ waitUntil: "domcontentloaded", timeout: 45000 }).catch(() => {});
+        await browserPage.waitForNavigation({ waitUntil: "domcontentloaded", timeout: 20000 }).catch(() => {});
       }
 
       if (!isCfJsChallenge && status >= 400) {
@@ -303,9 +303,18 @@ async function fetchYPPage(locationTerm, keyword, page, config, siteConfig) {
         throw error;
       }
 
-      // Wait for actual result cards to appear (up to 30s after challenge clears).
+      // If the CF challenge was not solved, treat it as a hard block so the shard retries
+      // with a fresh proxy IP rather than silently returning 0 results.
+      const titleAfterWait = (await browserPage.title().catch(() => "")).toLowerCase();
+      if (titleAfterWait.includes("just a moment") || titleAfterWait.includes("attention required") || titleAfterWait.includes("access denied")) {
+        const error = new Error(`YellowPages returned 403 (Cloudflare hard block) for "${locationTerm}"`);
+        error.statusCode = 403;
+        throw error;
+      }
+
+      // Wait for actual result cards to appear (up to 15s after challenge clears).
       await browserPage.waitForSelector(siteConfig.waitSelector, {
-        timeout: 30000,
+        timeout: 15000,
       }).catch(() => {});
 
       const html = await browserPage.content();
