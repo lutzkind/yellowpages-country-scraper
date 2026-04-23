@@ -26,6 +26,7 @@ function boolFromEnv(name, fallback) {
 const dataDir = process.env.DATA_DIR || path.join(process.cwd(), "data");
 const port = intFromEnv("PORT", 3000);
 const workerPollMs = intFromEnv("WORKER_POLL_MS", 5000);
+const workerConcurrency = intFromEnv("WORKER_CONCURRENCY", 4);
 const runningShardStaleMs = intFromEnv(
   "RUNNING_SHARD_STALE_MS",
   Math.max(workerPollMs * 24, 30 * 60 * 1000)
@@ -44,6 +45,7 @@ module.exports = {
   nominatimUrl:
     process.env.NOMINATIM_URL || "https://nominatim.openstreetmap.org/search",
   workerPollMs,
+  workerConcurrency,
   runningShardStaleMs,
   maxShardDepth: intFromEnv("MAX_SHARD_DEPTH", 14),
   retryLimit: intFromEnv("RETRY_LIMIT", 6),

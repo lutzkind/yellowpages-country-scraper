@@ -82,10 +82,12 @@ function getYPSiteConfig(countryCode) {
 // ---------------------------------------------------------------------------
 
 let _browser = null;
+let _browserPromise = null;
 
 async function getBrowser(config) {
   if (_browser) return _browser;
-  _browser = await chromium.launch({
+  if (_browserPromise) return _browserPromise;
+  _browserPromise = chromium.launch({
     executablePath: config.chromiumPath,
     headless: true,
     args: [
@@ -96,10 +98,16 @@ async function getBrowser(config) {
       "--disable-blink-features=AutomationControlled",
     ],
   });
+  _browser = await _browserPromise;
+  _browserPromise = null;
   return _browser;
 }
 
 async function closeBrowser() {
+  if (_browserPromise) {
+    await _browserPromise.catch(() => {});
+    _browserPromise = null;
+  }
   if (_browser) {
     await _browser.close().catch(() => {});
     _browser = null;
@@ -114,11 +122,13 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-let ypThrottle = Promise.resolve();
+const ypThrottleByKey = new Map();
 
-function queueYPRequest(task, delayMs) {
-  const run = ypThrottle.then(task);
-  ypThrottle = run.catch(() => undefined).then(() => sleep(delayMs));
+function queueYPRequest(key, task, delayMs) {
+  const queueKey = key || "default";
+  const previous = ypThrottleByKey.get(queueKey) || Promise.resolve();
+  const run = previous.then(task);
+  ypThrottleByKey.set(queueKey, run.catch(() => undefined).then(() => sleep(delayMs)));
   return run;
 }
 
@@ -264,7 +274,7 @@ function getProxyUrlForCountry(config, countryCode) {
 }
 
 async function fetchYPPage(locationTerm, keyword, page, config, siteConfig) {
-  return queueYPRequest(async () => {
+  return queueYPRequest(siteConfig.countryName, async () => {
     const url = siteConfig.buildSearchUrl(keyword, locationTerm, page);
 
     // Sites without Cloudflare (e.g. yellowpages.ca) use plain fetch — much cheaper.

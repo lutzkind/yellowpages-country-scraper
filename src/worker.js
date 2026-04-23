@@ -5,41 +5,70 @@ const { writeArtifacts } = require("./exporters");
 
 function createWorker({ store, config, nocoDb = null }) {
   let timer = null;
-  let busy = false;
+  let inFlight = 0;
+  let pumping = false;
+  let stopped = false;
 
-  return {
+  const api = {
     async start() {
+      stopped = false;
       recoverStaleRunningShards();
       await bootstrapPendingJobs();
+      await this.pump();
       timer = setInterval(() => {
-        this.tick().catch((error) => console.error("Worker tick failed:", error));
+        this.pump().catch((error) => console.error("Worker pump failed:", error));
       }, config.workerPollMs);
       timer.unref?.();
     },
     stop() {
+      stopped = true;
       if (timer) clearInterval(timer);
     },
-    async tick() {
-      if (busy) return;
-      busy = true;
+    async pump() {
+      if (pumping || stopped) return;
+      pumping = true;
       try {
         recoverStaleRunningShards();
         await bootstrapPendingJobs();
-        const shard = store.claimNextShard();
-        if (!shard) { await maybeSyncRunningJobs(); return; }
-        const job = store.getJob(shard.jobId);
-        if (!job || job.status !== "running") return;
-        const geometry = job.countryGeometry
-          ? { type: "Feature", geometry: job.countryGeometry }
-          : null;
-        await processShard(job, shard, geometry);
-        await maybeSyncRunningJobs();
-        await maybeFinalizeJob(job.id);
+
+        while (!stopped && inFlight < config.workerConcurrency) {
+          const shard = store.claimNextShard();
+          if (!shard) break;
+
+          const job = store.getJob(shard.jobId);
+          if (!job || job.status !== "running") continue;
+
+          const geometry = job.countryGeometry
+            ? { type: "Feature", geometry: job.countryGeometry }
+            : null;
+
+          inFlight += 1;
+          processShard(job, shard, geometry)
+            .then(async () => {
+              await maybeSyncRunningJobs();
+              await maybeFinalizeJob(job.id);
+            })
+            .catch((error) => {
+              console.error("Worker shard failed:", error);
+            })
+            .finally(() => {
+              inFlight -= 1;
+              queueMicrotask(() => {
+                api.pump().catch((error) => console.error("Worker pump failed:", error));
+              });
+            });
+        }
+
+        if (inFlight === 0) {
+          await maybeSyncRunningJobs();
+        }
       } finally {
-        busy = false;
+        pumping = false;
       }
     },
   };
+
+  return api;
 
   async function bootstrapPendingJobs() {
     const jobs = store.listJobs().filter((j) => j.status === "pending");
