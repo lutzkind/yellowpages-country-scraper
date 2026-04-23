@@ -849,7 +849,21 @@ function createStore(config) {
             WHERE s.status IN ('pending', 'retry')
               AND s.next_run_at <= @timestamp
               AND j.status = 'running'
-            ORDER BY s.updated_at ASC, s.depth DESC, s.id ASC
+              AND s.id = (
+                SELECT s2.id
+                FROM shards s2
+                WHERE s2.job_id = s.job_id
+                  AND s2.status IN ('pending', 'retry')
+                  AND s2.next_run_at <= @timestamp
+                ORDER BY s2.updated_at ASC, s2.depth DESC, s2.id ASC
+                LIMIT 1
+              )
+            ORDER BY CASE WHEN j.completed_shards = 0 THEN 0 ELSE 1 END ASC,
+                     CASE WHEN j.completed_shards = 0 THEN s.depth ELSE NULL END ASC,
+                     COALESCE(j.updated_at, j.created_at) ASC,
+                     CASE WHEN j.completed_shards > 0 THEN s.depth ELSE NULL END DESC,
+                     s.updated_at ASC,
+                     s.id ASC
             LIMIT 1
           `
         )
