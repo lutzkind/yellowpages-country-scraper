@@ -53,7 +53,7 @@ function createWorker({ store, config, nocoDb = null }) {
             })
             .finally(() => {
               inFlight -= 1;
-              queueMicrotask(() => {
+              setImmediate(() => {
                 api.pump().catch((error) => console.error("Worker pump failed:", error));
               });
             });
