@@ -15,19 +15,9 @@ const worker = createWorker({ store, config, nocoDb });
 const app = createApp({ store, config, nocoDb });
 
 const server = app.listen(config.port, config.host, () => {
-  worker
-    .start()
-    .then(() => {
-      console.log(
-        `yellowpages-country-scraper listening on http://${config.host}:${config.port}`
-      );
-    })
-    .catch((error) => {
-      console.error("Failed to start worker:", error);
-      server.close(() => {
-        process.exitCode = 1;
-      });
-    });
+  console.log(
+    `yellowpages-country-scraper listening on http://${config.host}:${config.port}`
+  );
 });
 
 async function shutdown() {
