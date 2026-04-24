@@ -53,9 +53,6 @@ function createWorker({ store, config, nocoDb = null }) {
             })
             .finally(() => {
               inFlight -= 1;
-              setImmediate(() => {
-                api.pump().catch((error) => console.error("Worker pump failed:", error));
-              });
             });
         }
 
