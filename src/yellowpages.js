@@ -219,10 +219,11 @@ async function reverseGeocode(lat, lon, config) {
   const postcode = addr.postcode || "";
 
   let locationTerm;
-  if (countryCode === "US" && postcode) {
-    locationTerm = postcode;
-  } else if (city && state) {
+  // City/state terms are more stable than raw postcodes for YellowPages US queries.
+  if (city && state) {
     locationTerm = `${city}, ${state}`;
+  } else if (countryCode === "US" && postcode) {
+    locationTerm = postcode;
   } else if (city) {
     locationTerm = city;
   } else if (data.display_name) {

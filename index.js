@@ -20,6 +20,10 @@ const server = app.listen(config.port, config.host, () => {
   );
 });
 
+worker.start().catch((error) => {
+  console.error("yellowpages-country-scraper worker failed to start:", error);
+});
+
 async function shutdown() {
   worker.stop();
   await closeBrowser();
