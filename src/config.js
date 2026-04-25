@@ -58,7 +58,7 @@ module.exports = {
   adminPassword: process.env.ADMIN_PASSWORD || null,
   sessionCookieName: process.env.SESSION_COOKIE_NAME || "yp_scraper_session",
   sessionTtlHours: intFromEnv("SESSION_TTL_HOURS", 24),
-  runScraperWorker: boolFromEnv("RUN_SCRAPER_WORKER", true),
+  runScraperWorker: boolFromEnv("RUN_SCRAPER_WORKER", false),
   // YellowPages request settings
   ypDelayMs: intFromEnv("YP_DELAY_MS", 1500),
   ypTimeoutMs: intFromEnv("YP_TIMEOUT_MS", 60000),
