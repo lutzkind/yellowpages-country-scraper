@@ -3,10 +3,12 @@ const path = require("path");
 const { resolveSearchParams } = require("./keywords");
 const { createJobId } = require("./worker");
 const { createAuth } = require("./auth");
+const { getSupportedCountryCodes } = require("./yellowpages");
 
 function createApp({ store, config, nocoDb }) {
   const app = express();
   const auth = createAuth({ store, config });
+  const supportedCountryCodes = new Set(getSupportedCountryCodes());
 
   app.use(express.json({ limit: "1mb" }));
   app.use("/assets", express.static(path.join(__dirname, "..", "public")));
@@ -51,6 +53,11 @@ function createApp({ store, config, nocoDb }) {
       const keyword = String(req.body.keyword || "").trim();
       if (!country || !keyword) {
         return res.status(400).json({ error: "country and keyword are required." });
+      }
+      if (!supportedCountryCodes.has(country.toLowerCase())) {
+        return res.status(400).json({
+          error: `country must be one of: ${Array.from(supportedCountryCodes).join(", ")}.`,
+        });
       }
       const id = createJobId();
       store.createJob({ id, country, keyword, searchParams: resolveSearchParams(keyword) });

@@ -56,25 +56,17 @@ const YP_SITE_CONFIGS = {
     },
     parseResults: parseYPCaResults,
   },
-  nz: {
-    domain: "www.yellowpages.co.nz",
-    countryName: "NZ",
-    resultsPerPage: 20,
-    buildSearchUrl(keyword, location, page) {
-      const url = new URL("https://www.yellowpages.co.nz/search");
-      url.searchParams.set("q", keyword);
-      url.searchParams.set("l", location);
-      if (page > 1) url.searchParams.set("page", String(page));
-      return url.toString();
-    },
-    waitSelector: ".listing-item, .no-results",
-    parseResults: parseYPNzResults,
-  },
 };
 
+const SUPPORTED_COUNTRY_CODES = Object.freeze(Object.keys(YP_SITE_CONFIGS));
+
 function getYPSiteConfig(countryCode) {
-  const code = (countryCode || "us").toLowerCase();
-  return YP_SITE_CONFIGS[code] || YP_SITE_CONFIGS.us;
+  const code = (countryCode || "").toLowerCase();
+  return YP_SITE_CONFIGS[code] || null;
+}
+
+function getSupportedCountryCodes() {
+  return SUPPORTED_COUNTRY_CODES;
 }
 
 // ---------------------------------------------------------------------------
@@ -693,6 +685,11 @@ async function queryYellowPages({ job, shard, geometry, config, exhaustive = fal
   const center = bboxCenter(shard.bbox);
   const keyword = job.searchParams?.query || job.keyword;
   const siteConfig = getYPSiteConfig(job.countryCode);
+  if (!siteConfig) {
+    const error = new Error(`YellowPages scraping is not supported for country "${job.countryCode || job.country}".`);
+    error.statusCode = 400;
+    throw error;
+  }
 
   const locationTerm = await reverseGeocode(center.lat, center.lon, config);
   if (!locationTerm) {
@@ -793,4 +790,5 @@ module.exports = {
   extractLocationParts,
   closeBrowser,
   getYPSiteConfig,
+  getSupportedCountryCodes,
 };
