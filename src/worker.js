@@ -18,7 +18,6 @@ function createWorker({ store, config, nocoDb = null }) {
       timer = setInterval(() => {
         this.pump().catch((error) => console.error("Worker pump failed:", error));
       }, config.workerPollMs);
-      timer.unref?.();
     },
     stop() {
       stopped = true;
