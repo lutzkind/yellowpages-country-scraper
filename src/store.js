@@ -858,8 +858,7 @@ function createStore(config) {
                 ORDER BY s2.updated_at ASC, s2.depth DESC, s2.id ASC
                 LIMIT 1
               )
-            ORDER BY CASE WHEN j.completed_shards = 0 THEN 0 ELSE 1 END ASC,
-                     COALESCE(j.updated_at, j.created_at) ASC,
+            ORDER BY COALESCE(j.updated_at, j.created_at) ASC,
                      CASE WHEN j.completed_shards = 0 THEN s.depth ELSE NULL END ASC,
                      CASE WHEN j.completed_shards > 0 THEN s.depth ELSE NULL END DESC,
                      s.updated_at ASC,
