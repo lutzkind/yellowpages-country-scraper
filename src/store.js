@@ -883,6 +883,14 @@ function createStore(config) {
         `
       ).run({ id: row.id, timestamp, runToken });
 
+      db.prepare(
+        `
+          UPDATE jobs
+          SET updated_at = @timestamp
+          WHERE id = @jobId
+        `
+      ).run({ jobId: row.job_id, timestamp });
+
       return this.getShard(row.id);
     },
 
