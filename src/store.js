@@ -36,6 +36,7 @@ function createStore(config) {
       artifact_json_path TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
+      last_claimed_at TEXT,
       started_at TEXT,
       finished_at TEXT
     );
@@ -132,6 +133,7 @@ function createStore(config) {
     ["country", "TEXT"],
   ]);
   ensureLeadColumns(db, "shards", [["run_token", "TEXT"]]);
+  ensureLeadColumns(db, "jobs", [["last_claimed_at", "TEXT"]]);
   migrateDropLatLonNotNull(db);
   backfillLeadLocations(db);
 
@@ -858,7 +860,7 @@ function createStore(config) {
                 ORDER BY s2.updated_at ASC, s2.depth DESC, s2.id ASC
                 LIMIT 1
               )
-            ORDER BY COALESCE(j.updated_at, j.created_at) ASC,
+            ORDER BY COALESCE(j.last_claimed_at, j.created_at) ASC,
                      CASE WHEN j.completed_shards = 0 THEN s.depth ELSE NULL END ASC,
                      CASE WHEN j.completed_shards > 0 THEN s.depth ELSE NULL END DESC,
                      s.updated_at ASC,
@@ -887,6 +889,7 @@ function createStore(config) {
         `
           UPDATE jobs
           SET updated_at = @timestamp
+             ,last_claimed_at = @timestamp
           WHERE id = @jobId
         `
       ).run({ jobId: row.job_id, timestamp });
