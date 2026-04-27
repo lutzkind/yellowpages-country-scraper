@@ -166,6 +166,9 @@ function createStore(config) {
 
     seedJob(jobId, countryData) {
       const timestamp = nowIso();
+      const seedBBoxes = Array.isArray(countryData.seedBBoxes) && countryData.seedBBoxes.length > 0
+        ? countryData.seedBBoxes
+        : [countryData.bbox];
       db.transaction(() => {
         db.prepare(
           `
@@ -188,21 +191,22 @@ function createStore(config) {
           geometryJson: JSON.stringify(countryData.geometry?.geometry || null),
           timestamp,
         });
-
-        db.prepare(
-          `
-            INSERT INTO shards (
-              job_id, bbox_json, depth, status, next_run_at,
-              created_at, updated_at
-            ) VALUES (
-              @jobId, @bboxJson, 0, 'pending', @timestamp, @timestamp, @timestamp
-            )
-          `
-        ).run({
-          jobId,
-          bboxJson: JSON.stringify(countryData.bbox),
-          timestamp,
-        });
+        for (const bbox of seedBBoxes) {
+          db.prepare(
+            `
+              INSERT INTO shards (
+                job_id, bbox_json, depth, status, next_run_at,
+                created_at, updated_at
+              ) VALUES (
+                @jobId, @bboxJson, 0, 'pending', @timestamp, @timestamp, @timestamp
+              )
+            `
+          ).run({
+            jobId,
+            bboxJson: JSON.stringify(bbox),
+            timestamp,
+          });
+        }
       })();
 
       this.refreshJobStats(jobId);

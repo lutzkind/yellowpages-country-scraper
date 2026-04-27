@@ -8,6 +8,7 @@ const {
   bboxCenter,
   pointInsideBBox,
   pointInsideGeometry,
+  deriveSeedBBoxes,
 } = require("./geo");
 
 // ---------------------------------------------------------------------------
@@ -174,6 +175,7 @@ async function resolveCountry(country, config) {
     displayName: first.display_name,
     countryCode: first.address?.country_code || country || null,
     bbox: parseBoundingBox(first.boundingbox),
+    seedBBoxes: deriveSeedBBoxes(geometry, parseBoundingBox(first.boundingbox)),
     geometry,
     raw: first,
   };

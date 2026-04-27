@@ -12,6 +12,14 @@ function bboxToArray(bbox) {
   return [bbox.west, bbox.south, bbox.east, bbox.north];
 }
 
+function bboxFromArray(raw) {
+  if (!Array.isArray(raw) || raw.length !== 4) {
+    throw new Error("Invalid bbox array.");
+  }
+  const [west, south, east, north] = raw.map((v) => Number.parseFloat(v));
+  return { south, west, north, east };
+}
+
 function splitBBox(bbox) {
   const midLat = (bbox.south + bbox.north) / 2;
   const midLon = (bbox.west + bbox.east) / 2;
@@ -37,6 +45,50 @@ function bboxIntersectsGeometry(bbox, geometry) {
 
 function bboxCenter(bbox) {
   return { lat: (bbox.south + bbox.north) / 2, lon: (bbox.west + bbox.east) / 2 };
+}
+
+function deriveSeedBBoxes(geometry, fallbackBbox, options = {}) {
+  if (!geometry) {
+    return [fallbackBbox];
+  }
+
+  const {
+    maxSeeds = 32,
+    cumulativeAreaRatio = 0.995,
+  } = options;
+
+  const feature = geometry.type === "Feature" ? geometry : { type: "Feature", geometry };
+  const polygons = [];
+
+  turf.flattenEach(feature, (polygonFeature) => {
+    const area = turf.area(polygonFeature);
+    if (!Number.isFinite(area) || area <= 0) return;
+    polygons.push({
+      area,
+      bbox: bboxFromArray(turf.bbox(polygonFeature)),
+    });
+  });
+
+  if (polygons.length === 0) {
+    return [fallbackBbox];
+  }
+
+  polygons.sort((a, b) => b.area - a.area);
+
+  const totalArea = polygons.reduce((sum, polygon) => sum + polygon.area, 0);
+  const targetArea = totalArea * cumulativeAreaRatio;
+  const seedBBoxes = [];
+  let coveredArea = 0;
+
+  for (const polygon of polygons) {
+    seedBBoxes.push(polygon.bbox);
+    coveredArea += polygon.area;
+
+    if (seedBBoxes.length >= maxSeeds) break;
+    if (coveredArea >= targetArea) break;
+  }
+
+  return seedBBoxes.length > 0 ? seedBBoxes : [fallbackBbox];
 }
 
 function bboxRadiusMeters(bbox, capMeters = Number.POSITIVE_INFINITY) {
@@ -65,5 +117,5 @@ function pointInsideGeometry(lat, lon, geometry) {
 module.exports = {
   parseBoundingBox, bboxToArray, splitBBox, canSplitBBox,
   bboxIntersectsGeometry, bboxCenter, bboxRadiusMeters,
-  pointInsideBBox, pointInsideGeometry,
+  pointInsideBBox, pointInsideGeometry, deriveSeedBBoxes,
 };
