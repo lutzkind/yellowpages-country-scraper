@@ -140,6 +140,109 @@ function createStore(config) {
   resetRunningShards(db);
   cleanupExpiredSessions(db);
 
+  function upsertJobLeads(jobId, leads, timestamp) {
+    const insert = db.prepare(
+      `
+        INSERT INTO leads (
+          job_id, dedupe_key, place_id, cid, data_id, link, name, category,
+          categories_json, website, phone, email, address, complete_address_json,
+          city, area, state_region, postcode, country, lat, lon, review_count,
+          review_rating, business_status, price_range, source_bbox_json, raw_json,
+          created_at, updated_at
+        ) VALUES (
+          @jobId, @dedupeKey, @placeId, @cid, @dataId, @link, @name, @category,
+          @categoriesJson, @website, @phone, @email, @address, @completeAddressJson,
+          @city, @area, @stateRegion, @postcode, @country, @lat, @lon,
+          @reviewCount, @reviewRating, @businessStatus, @priceRange,
+          @sourceBBoxJson, @rawJson, @timestamp, @timestamp
+        )
+        ON CONFLICT(job_id, dedupe_key) DO UPDATE SET
+          place_id = COALESCE(excluded.place_id, leads.place_id),
+          cid = COALESCE(excluded.cid, leads.cid),
+          data_id = COALESCE(excluded.data_id, leads.data_id),
+          link = COALESCE(excluded.link, leads.link),
+          name = excluded.name,
+          category = excluded.category,
+          categories_json = excluded.categories_json,
+          website = CASE
+            WHEN COALESCE(leads.website, '') = '' THEN excluded.website
+            ELSE leads.website
+          END,
+          phone = CASE
+            WHEN COALESCE(leads.phone, '') = '' THEN excluded.phone
+            ELSE leads.phone
+          END,
+          address = CASE
+            WHEN COALESCE(leads.address, '') = '' THEN excluded.address
+            ELSE leads.address
+          END,
+          complete_address_json = excluded.complete_address_json,
+          city = CASE
+            WHEN COALESCE(leads.city, '') = '' THEN excluded.city
+            ELSE leads.city
+          END,
+          area = CASE
+            WHEN COALESCE(leads.area, '') = '' THEN excluded.area
+            ELSE leads.area
+          END,
+          state_region = CASE
+            WHEN COALESCE(leads.state_region, '') = '' THEN excluded.state_region
+            ELSE leads.state_region
+          END,
+          postcode = CASE
+            WHEN COALESCE(leads.postcode, '') = '' THEN excluded.postcode
+            ELSE leads.postcode
+          END,
+          country = CASE
+            WHEN COALESCE(leads.country, '') = '' THEN excluded.country
+            ELSE leads.country
+          END,
+          review_count = CASE
+            WHEN excluded.review_count > COALESCE(leads.review_count, 0) THEN excluded.review_count
+            ELSE leads.review_count
+          END,
+          review_rating = COALESCE(excluded.review_rating, leads.review_rating),
+          business_status = COALESCE(excluded.business_status, leads.business_status),
+          price_range = COALESCE(excluded.price_range, leads.price_range),
+          raw_json = excluded.raw_json,
+          updated_at = excluded.updated_at
+      `
+    );
+
+    for (const lead of leads) {
+      insert.run({
+        jobId,
+        dedupeKey: lead.dedupeKey,
+        placeId: lead.placeId,
+        cid: lead.cid,
+        dataId: lead.dataId || null,
+        link: lead.link,
+        name: lead.name,
+        category: lead.category,
+        categoriesJson: JSON.stringify(lead.categories || []),
+        website: lead.website || null,
+        phone: lead.phone,
+        email: lead.email || null,
+        address: lead.address,
+        completeAddressJson: JSON.stringify(lead.completeAddress || null),
+        city: lead.city,
+        area: lead.area,
+        stateRegion: lead.stateRegion,
+        postcode: lead.postcode,
+        country: lead.country,
+        lat: lead.lat,
+        lon: lead.lon,
+        reviewCount: lead.reviewCount || 0,
+        reviewRating: lead.reviewRating,
+        businessStatus: lead.status,
+        priceRange: lead.priceRange,
+        sourceBBoxJson: JSON.stringify(lead.bbox),
+        rawJson: JSON.stringify(lead.raw || {}),
+        timestamp,
+      });
+    }
+  }
+
   return {
     db,
     createJob(input) {
@@ -1023,106 +1126,7 @@ function createStore(config) {
           return null;
         }
 
-        const insert = db.prepare(
-          `
-            INSERT INTO leads (
-              job_id, dedupe_key, place_id, cid, data_id, link, name, category,
-              categories_json, website, phone, email, address, complete_address_json,
-              city, area, state_region, postcode, country, lat, lon, review_count,
-              review_rating, business_status, price_range, source_bbox_json, raw_json,
-              created_at, updated_at
-            ) VALUES (
-              @jobId, @dedupeKey, @placeId, @cid, @dataId, @link, @name, @category,
-              @categoriesJson, @website, @phone, @email, @address, @completeAddressJson,
-              @city, @area, @stateRegion, @postcode, @country, @lat, @lon,
-              @reviewCount, @reviewRating, @businessStatus, @priceRange,
-              @sourceBBoxJson, @rawJson, @timestamp, @timestamp
-            )
-            ON CONFLICT(job_id, dedupe_key) DO UPDATE SET
-              place_id = COALESCE(excluded.place_id, leads.place_id),
-              cid = COALESCE(excluded.cid, leads.cid),
-              data_id = COALESCE(excluded.data_id, leads.data_id),
-              link = COALESCE(excluded.link, leads.link),
-              name = excluded.name,
-              category = excluded.category,
-              categories_json = excluded.categories_json,
-              website = CASE
-                WHEN COALESCE(leads.website, '') = '' THEN excluded.website
-                ELSE leads.website
-              END,
-              phone = CASE
-                WHEN COALESCE(leads.phone, '') = '' THEN excluded.phone
-                ELSE leads.phone
-              END,
-              address = CASE
-                WHEN COALESCE(leads.address, '') = '' THEN excluded.address
-                ELSE leads.address
-              END,
-              complete_address_json = excluded.complete_address_json,
-              city = CASE
-                WHEN COALESCE(leads.city, '') = '' THEN excluded.city
-                ELSE leads.city
-              END,
-              area = CASE
-                WHEN COALESCE(leads.area, '') = '' THEN excluded.area
-                ELSE leads.area
-              END,
-              state_region = CASE
-                WHEN COALESCE(leads.state_region, '') = '' THEN excluded.state_region
-                ELSE leads.state_region
-              END,
-              postcode = CASE
-                WHEN COALESCE(leads.postcode, '') = '' THEN excluded.postcode
-                ELSE leads.postcode
-              END,
-              country = CASE
-                WHEN COALESCE(leads.country, '') = '' THEN excluded.country
-                ELSE leads.country
-              END,
-              review_count = CASE
-                WHEN excluded.review_count > COALESCE(leads.review_count, 0) THEN excluded.review_count
-                ELSE leads.review_count
-              END,
-              review_rating = COALESCE(excluded.review_rating, leads.review_rating),
-              business_status = COALESCE(excluded.business_status, leads.business_status),
-              price_range = COALESCE(excluded.price_range, leads.price_range),
-              raw_json = excluded.raw_json,
-              updated_at = excluded.updated_at
-          `
-        );
-
-        for (const lead of leads) {
-          insert.run({
-            jobId: shard.jobId,
-            dedupeKey: lead.dedupeKey,
-            placeId: lead.placeId,
-            cid: lead.cid,
-            dataId: lead.dataId || null,
-            link: lead.link,
-            name: lead.name,
-            category: lead.category,
-            categoriesJson: JSON.stringify(lead.categories || []),
-            website: lead.website || null,
-            phone: lead.phone,
-            email: lead.email || null,
-            address: lead.address,
-            completeAddressJson: JSON.stringify(lead.completeAddress || null),
-            city: lead.city,
-            area: lead.area,
-            stateRegion: lead.stateRegion,
-            postcode: lead.postcode,
-            country: lead.country,
-            lat: lead.lat,
-            lon: lead.lon,
-            reviewCount: lead.reviewCount || 0,
-            reviewRating: lead.reviewRating,
-            businessStatus: lead.status,
-            priceRange: lead.priceRange,
-            sourceBBoxJson: JSON.stringify(lead.bbox),
-            rawJson: JSON.stringify(lead.raw || {}),
-            timestamp,
-          });
-        }
+        upsertJobLeads(shard.jobId, leads, timestamp);
 
         db.prepare(
           `
@@ -1151,6 +1155,19 @@ function createStore(config) {
 
       this.refreshJobStats(completedJobId);
       return completedJobId;
+    },
+
+    upsertLeads(jobId, leads) {
+      if (!Array.isArray(leads) || leads.length === 0) {
+        return 0;
+      }
+
+      const timestamp = nowIso();
+      db.transaction(() => {
+        upsertJobLeads(jobId, leads, timestamp);
+      })();
+      this.refreshJobStats(jobId);
+      return leads.length;
     },
 
     retryShard(shardId, errorMessage, delayMs, runToken = null) {

@@ -86,18 +86,25 @@ function createWorker({ store, config, nocoDb = null }) {
     }
 
     const canSplit = shard.depth < config.maxShardDepth && canSplitBBox(shard.bbox, config);
-
-    if (canSplit && bboxRadiusMeters(shard.bbox) > config.ypTargetShardRadiusMeters) {
-      store.splitShard(shard.id, splitBBox(shard.bbox), shard.runToken);
-      return;
-    }
+    const shardRadiusMeters = bboxRadiusMeters(shard.bbox);
 
     try {
       const response = await queryYellowPages({ job, shard, geometry, config });
 
       if (store.getJob(job.id)?.status === "canceled") return;
 
+      if (canSplit && shardRadiusMeters > config.ypTargetShardRadiusMeters) {
+        if (response.leads.length > 0) {
+          store.upsertLeads(job.id, response.leads);
+        }
+        store.splitShard(shard.id, splitBBox(shard.bbox), shard.runToken);
+        return;
+      }
+
       if (response.rawCount >= config.resultSplitThreshold && canSplit) {
+        if (response.leads.length > 0) {
+          store.upsertLeads(job.id, response.leads);
+        }
         store.splitShard(shard.id, splitBBox(shard.bbox), shard.runToken);
         return;
       }
