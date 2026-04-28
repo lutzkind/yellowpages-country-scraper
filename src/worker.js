@@ -1,6 +1,6 @@
 const crypto = require("crypto");
 const { bboxIntersectsGeometry, bboxRadiusMeters, splitBBox, canSplitBBox } = require("./geo");
-const { resolveCountry, queryYellowPages } = require("./yellowpages");
+const { resolveCountry, queryYellowPages, closeBrowser } = require("./yellowpages");
 const { writeArtifacts } = require("./exporters");
 
 function createWorker({ store, config, nocoDb = null }) {
@@ -66,6 +66,27 @@ function createWorker({ store, config, nocoDb = null }) {
 
   return api;
 
+  function withTimeout(promise, timeoutMs, message) {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        const error = new Error(message);
+        error.code = "SHARD_EXECUTION_TIMEOUT";
+        reject(error);
+      }, timeoutMs);
+
+      promise.then(
+        (value) => {
+          clearTimeout(timer);
+          resolve(value);
+        },
+        (error) => {
+          clearTimeout(timer);
+          reject(error);
+        }
+      );
+    });
+  }
+
   async function bootstrapPendingJobs() {
     const jobs = store.listJobs().filter((j) => j.status === "pending");
     for (const job of jobs) {
@@ -89,7 +110,11 @@ function createWorker({ store, config, nocoDb = null }) {
     const shardRadiusMeters = bboxRadiusMeters(shard.bbox);
 
     try {
-      const response = await queryYellowPages({ job, shard, geometry, config });
+      const response = await withTimeout(
+        queryYellowPages({ job, shard, geometry, config }),
+        config.shardExecutionTimeoutMs,
+        `Shard execution exceeded ${config.shardExecutionTimeoutMs}ms.`
+      );
 
       if (store.getJob(job.id)?.status === "canceled") return;
 
@@ -111,7 +136,11 @@ function createWorker({ store, config, nocoDb = null }) {
 
       // Dense leaf: re-query exhaustively with pagination.
       if (!canSplit && response.rawCount >= config.resultSplitThreshold) {
-        const exhaustiveResponse = await queryYellowPages({ job, shard, geometry, config, exhaustive: true });
+        const exhaustiveResponse = await withTimeout(
+          queryYellowPages({ job, shard, geometry, config, exhaustive: true }),
+          config.shardExecutionTimeoutMs,
+          `Exhaustive shard execution exceeded ${config.shardExecutionTimeoutMs}ms.`
+        );
         if (store.getJob(job.id)?.status === "canceled") return;
         store.completeShard(shard.id, exhaustiveResponse.leads, shard.runToken);
         return;
@@ -119,8 +148,18 @@ function createWorker({ store, config, nocoDb = null }) {
 
       store.completeShard(shard.id, response.leads, shard.runToken);
     } catch (error) {
+      if (
+        error.code === "SHARD_EXECUTION_TIMEOUT" ||
+        /ERR_TUNNEL_CONNECTION_FAILED|Target page, context or browser has been closed/i.test(
+          error.message || ""
+        )
+      ) {
+        await closeBrowser().catch(() => {});
+      }
+
       const isRateOrBlocked =
         error.name === "AbortError" ||
+        error.code === "SHARD_EXECUTION_TIMEOUT" ||
         error.statusCode === 429 ||
         error.statusCode === 403 ||
         error.statusCode === 503 ||

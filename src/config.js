@@ -27,9 +27,14 @@ const dataDir = process.env.DATA_DIR || path.join(process.cwd(), "data");
 const port = intFromEnv("PORT", 3000);
 const workerPollMs = intFromEnv("WORKER_POLL_MS", 5000);
 const workerConcurrency = intFromEnv("WORKER_CONCURRENCY", 6);
+const ypTimeoutMs = intFromEnv("YP_TIMEOUT_MS", 60000);
+const shardExecutionTimeoutMs = intFromEnv(
+  "SHARD_EXECUTION_TIMEOUT_MS",
+  Math.max(ypTimeoutMs * 4, 5 * 60 * 1000)
+);
 const runningShardStaleMs = intFromEnv(
   "RUNNING_SHARD_STALE_MS",
-  Math.max(workerPollMs * 24, 30 * 60 * 1000)
+  Math.max(shardExecutionTimeoutMs * 2, 10 * 60 * 1000)
 );
 
 module.exports = {
@@ -61,7 +66,8 @@ module.exports = {
   runScraperWorker: boolFromEnv("RUN_SCRAPER_WORKER", true),
   // YellowPages request settings
   ypDelayMs: intFromEnv("YP_DELAY_MS", 1500),
-  ypTimeoutMs: intFromEnv("YP_TIMEOUT_MS", 60000),
+  ypTimeoutMs,
+  shardExecutionTimeoutMs,
   ypMaxPages: intFromEnv("YP_MAX_PAGES", 10),
   ypTargetShardRadiusMeters: intFromEnv("YP_TARGET_SHARD_RADIUS_METERS", 25000),
   chromiumPath: process.env.CHROMIUM_PATH || "/usr/bin/chromium",
