@@ -148,6 +148,15 @@ function createWorker({ store, config, nocoDb = null }) {
 
       store.completeShard(shard.id, response.leads, shard.runToken);
     } catch (error) {
+      if (error.code === "COARSE_LOCATION") {
+        if (canSplit) {
+          store.splitShard(shard.id, splitBBox(shard.bbox), shard.runToken);
+          return;
+        }
+        store.completeShard(shard.id, [], shard.runToken);
+        return;
+      }
+
       if (
         error.code === "SHARD_EXECUTION_TIMEOUT" ||
         /ERR_TUNNEL_CONNECTION_FAILED|Target page, context or browser has been closed/i.test(

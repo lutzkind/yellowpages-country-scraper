@@ -226,8 +226,17 @@ async function reverseGeocode(lat, lon, config) {
     locationTerm = null;
   }
 
-  reverseGeocodeCache.set(key, locationTerm);
-  return locationTerm;
+  const payload = {
+    locationTerm,
+    city: city || null,
+    state: state || null,
+    postcode: postcode || null,
+    countryCode: countryCode || null,
+    displayName: data.display_name || null,
+  };
+
+  reverseGeocodeCache.set(key, payload);
+  return payload;
 }
 
 // ---------------------------------------------------------------------------
@@ -693,9 +702,22 @@ async function queryYellowPages({ job, shard, geometry, config, exhaustive = fal
     throw error;
   }
 
-  const locationTerm = await reverseGeocode(center.lat, center.lon, config);
-  if (!locationTerm) {
+  const location = await reverseGeocode(center.lat, center.lon, config);
+  if (!location?.locationTerm) {
     return { rawCount: 0, leads: [] };
+  }
+
+  const locationTerm = location.locationTerm;
+  const requiresSpecificLocality = siteConfig.usePlaywright !== false;
+  const isCoarsePlaywrightLocation =
+    requiresSpecificLocality &&
+    !location.city &&
+    !location.postcode;
+
+  if (isCoarsePlaywrightLocation) {
+    const error = new Error(`Reverse geocode too coarse for "${locationTerm}"`);
+    error.code = "COARSE_LOCATION";
+    throw error;
   }
 
   const firstPage = await fetchYPPage(locationTerm, keyword, 1, config, siteConfig);
