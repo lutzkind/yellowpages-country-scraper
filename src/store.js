@@ -964,7 +964,10 @@ function createStore(config) {
                 WHERE s2.job_id = s.job_id
                   AND s2.status IN ('pending', 'retry')
                   AND s2.next_run_at <= @timestamp
-                ORDER BY s2.updated_at ASC, s2.depth DESC, s2.id ASC
+                ORDER BY CASE s2.status WHEN 'pending' THEN 0 ELSE 1 END ASC,
+                         s2.updated_at ASC,
+                         s2.depth DESC,
+                         s2.id ASC
                 LIMIT 1
               )
             ORDER BY COALESCE(j.last_claimed_at, j.created_at) ASC,
