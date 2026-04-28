@@ -55,6 +55,7 @@ function deriveSeedBBoxes(geometry, fallbackBbox, options = {}) {
   const {
     maxSeeds = 32,
     cumulativeAreaRatio = 0.995,
+    minPolygonAreaRatio = 0.0002,
   } = options;
 
   const feature = geometry.type === "Feature" ? geometry : { type: "Feature", geometry };
@@ -76,11 +77,15 @@ function deriveSeedBBoxes(geometry, fallbackBbox, options = {}) {
   polygons.sort((a, b) => b.area - a.area);
 
   const totalArea = polygons.reduce((sum, polygon) => sum + polygon.area, 0);
+  const filteredPolygons = polygons.filter((polygon) => {
+    if (!Number.isFinite(totalArea) || totalArea <= 0) return true;
+    return (polygon.area / totalArea) >= minPolygonAreaRatio;
+  });
   const targetArea = totalArea * cumulativeAreaRatio;
   const seedBBoxes = [];
   let coveredArea = 0;
 
-  for (const polygon of polygons) {
+  for (const polygon of filteredPolygons) {
     seedBBoxes.push(polygon.bbox);
     coveredArea += polygon.area;
 
@@ -88,7 +93,11 @@ function deriveSeedBBoxes(geometry, fallbackBbox, options = {}) {
     if (coveredArea >= targetArea) break;
   }
 
-  return seedBBoxes.length > 0 ? seedBBoxes : [fallbackBbox];
+  if (seedBBoxes.length > 0) {
+    return seedBBoxes;
+  }
+
+  return polygons.length > 0 ? [polygons[0].bbox] : [fallbackBbox];
 }
 
 function bboxRadiusMeters(bbox, capMeters = Number.POSITIVE_INFINITY) {
