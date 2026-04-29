@@ -118,6 +118,11 @@ function createWorker({ store, config, nocoDb = null }) {
 
       if (store.getJob(job.id)?.status === "canceled") return;
 
+      if ((response.rawCount || 0) <= 0 && response.leads.length === 0) {
+        store.completeShard(shard.id, [], shard.runToken);
+        return;
+      }
+
       if (canSplit && shardRadiusMeters > config.ypTargetShardRadiusMeters) {
         if (response.leads.length > 0) {
           store.upsertLeads(job.id, response.leads);
